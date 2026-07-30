@@ -3,7 +3,7 @@ import { useState } from "react";
 import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
-
+import { registerUser } from "../services/authService";
 function Register() {
   const [formData, setFormData] = useState({
     fullName: "",
@@ -20,20 +20,29 @@ function Register() {
     });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+ const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
-      return;
-    }
+  if (formData.password !== formData.confirmPassword) {
+    alert("Passwords do not match!");
+    return;
+  }
 
-    console.log(formData);
+  try {
+    const response = await registerUser({
+      fullName: formData.fullName,
+      email: formData.email,
+      password: formData.password,
+      role: formData.role,
+    });
 
-    // TODO:
-    // Call Register API
-    // Redirect to Login
-  };
+    console.log(response);
+    alert("Registration successful!");
+  } catch (error) {
+    console.error(error);
+    alert("Registration failed!");
+  }
+};
 
   return (
     <AuthLayout

@@ -3,6 +3,7 @@ import { useState } from "react";
 import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
+import { loginUser } from "../services/authService";
 
 function Login() {
   const [formData, setFormData] = useState({
@@ -17,16 +18,21 @@ function Login() {
     });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    console.log(formData);
+  try {
+    const response = await loginUser({
+      email: formData.email,
+      password: formData.password,
+    });
 
-    // TODO:
-    // Call login API
-    // Store JWT
-    // Redirect to dashboard
-  };
+    console.log(response);
+  } catch (error) {
+    console.error(error);
+    alert("Invalid email or password!");
+  }
+};
 
   return (
     <AuthLayout
