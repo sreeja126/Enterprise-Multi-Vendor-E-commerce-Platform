@@ -1,10 +1,14 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
 import { registerUser } from "../services/authService";
+import Dashboard from "./Dashboard";
 function Register() {
+
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -20,29 +24,45 @@ function Register() {
     });
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  if (formData.password !== formData.confirmPassword) {
-    alert("Passwords do not match!");
-    return;
-  }
+    if (formData.password !== formData.confirmPassword) {
+      alert("Passwords do not match!");
+      return;
+    }
 
-  try {
-    const response = await registerUser({
-      fullName: formData.fullName,
-      email: formData.email,
-      password: formData.password,
-      role: formData.role,
-    });
+    try {
+      const response = await registerUser({
+        fullName: formData.fullName,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+      });
 
-    console.log(response);
-    alert("Registration successful!");
-  } catch (error) {
-    console.error(error);
-    alert("Registration failed!");
-  }
-};
+     
+
+      setFormData({
+        fullName: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+        role: "CUSTOMER",
+      });
+
+      navigate("/dashboard");
+
+    } catch (error) {
+
+      console.error(error);
+
+      if (error.response) {
+        alert(error.response.data);
+      } else {
+        alert("Registration failed!");
+      }
+    }
+  };
 
   return (
     <AuthLayout
@@ -50,6 +70,7 @@ function Register() {
       subtitle="Join ShopStack as a Customer or Vendor."
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+
         <InputField
           label="Full Name"
           name="fullName"
@@ -98,18 +119,7 @@ function Register() {
             name="role"
             value={formData.role}
             onChange={handleChange}
-            className="
-              w-full
-              rounded-lg
-              border
-              border-slate-300
-              px-4
-              py-3
-              focus:outline-none
-              focus:ring-2
-              focus:ring-blue-500
-              focus:border-blue-500
-            "
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="CUSTOMER">Customer</option>
             <option value="VENDOR">Vendor</option>
@@ -129,6 +139,7 @@ function Register() {
             Login
           </Link>
         </p>
+
       </form>
     </AuthLayout>
   );

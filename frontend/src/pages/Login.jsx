@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
@@ -6,6 +6,9 @@ import Button from "../components/Button";
 import { loginUser } from "../services/authService";
 
 function Login() {
+
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -19,20 +22,35 @@ function Login() {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  try {
-    const response = await loginUser({
-      email: formData.email,
-      password: formData.password,
-    });
+    try {
+       const response = await loginUser({
+  email: formData.email,
+  password: formData.password,
+});
 
-    console.log(response);
-  } catch (error) {
-    console.error(error);
-    alert("Invalid email or password!");
-  }
-};
+
+
+localStorage.setItem("token", response.data.token);
+
+      
+
+     
+
+      navigate("/dashboard");
+
+    } catch (error) {
+
+      console.error(error);
+
+      if (error.response) {
+        alert(error.response.data.message || "Login Failed");
+      } else {
+        alert("Unable to connect to server.");
+      }
+    }
+  };
 
   return (
     <AuthLayout
@@ -40,6 +58,7 @@ function Login() {
       subtitle="Login to continue shopping with ShopStack."
     >
       <form onSubmit={handleSubmit} className="space-y-5">
+
         <InputField
           label="Email"
           type="email"
@@ -61,6 +80,7 @@ function Login() {
         />
 
         <div className="flex items-center justify-between text-sm">
+
           <label className="flex items-center gap-2 text-slate-600">
             <input
               type="checkbox"
@@ -75,6 +95,7 @@ function Login() {
           >
             Forgot Password?
           </button>
+
         </div>
 
         <Button type="submit">
@@ -90,6 +111,7 @@ function Login() {
             Register
           </Link>
         </p>
+
       </form>
     </AuthLayout>
   );
