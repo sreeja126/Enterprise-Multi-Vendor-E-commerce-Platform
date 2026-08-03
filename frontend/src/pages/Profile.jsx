@@ -26,35 +26,47 @@ function Profile() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <h2 className="text-xl font-semibold">Loading Profile...</h2>
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <h2 className="text-lg font-medium text-slate-500">Loading profile…</h2>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-      <div className="w-full max-w-lg bg-white shadow-lg rounded-xl p-8">
+  const initials = user.fullName
+    ? user.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
 
-        <h1 className="text-3xl font-bold text-center text-blue-600 mb-6">
-          My Profile
-        </h1>
+  return (
+    <div className="min-h-screen bg-stone-50 flex items-center justify-center py-12 px-4">
+      <div className="w-full max-w-lg bg-white shadow-md border border-stone-100 rounded-2xl p-8">
+
+        <div className="flex flex-col items-center mb-8">
+          <div className="h-20 w-20 rounded-full bg-emerald-700 text-white flex items-center justify-center text-2xl font-bold mb-4">
+            {initials}
+          </div>
+          <h1 className="text-2xl font-serif font-bold text-slate-900">
+            {user.fullName}
+          </h1>
+          <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full mt-2">
+            {user.role}
+          </span>
+        </div>
 
         <div className="space-y-4">
 
-          <div className="border rounded-lg p-4">
-            <p className="text-gray-500 text-sm">Full Name</p>
-            <p className="text-lg font-semibold">{user.fullName}</p>
+          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
+            <p className="text-slate-400 text-xs uppercase tracking-wide">Full Name</p>
+            <p className="text-lg font-semibold text-slate-900">{user.fullName}</p>
           </div>
 
-          <div className="border rounded-lg p-4">
-            <p className="text-gray-500 text-sm">Email</p>
-            <p className="text-lg font-semibold">{user.email}</p>
+          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
+            <p className="text-slate-400 text-xs uppercase tracking-wide">Email</p>
+            <p className="text-lg font-semibold text-slate-900">{user.email}</p>
           </div>
 
-          <div className="border rounded-lg p-4">
-            <p className="text-gray-500 text-sm">Role</p>
-            <p className="text-lg font-semibold">{user.role}</p>
+          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
+            <p className="text-slate-400 text-xs uppercase tracking-wide">Role</p>
+            <p className="text-lg font-semibold text-slate-900">{user.role}</p>
           </div>
 
         </div>
@@ -63,21 +75,21 @@ function Profile() {
 
           <button
             onClick={() => navigate("/dashboard")}
-            className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 rounded-lg"
+            className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
           >
             Dashboard
           </button>
 
           <button
             onClick={() => navigate("/editprofile")}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
+            className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition"
           >
             Edit Profile
           </button>
 
           <button
             onClick={handleLogout}
-            className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg"
+            className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-3 rounded-lg font-medium transition"
           >
             Logout
           </button>

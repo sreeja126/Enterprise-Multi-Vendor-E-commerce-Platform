@@ -4,76 +4,88 @@ function Dashboard() {
 
   const navigate = useNavigate();
 
-  const token = localStorage.getItem("token");
-
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/login");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center">
+    <div className="min-h-screen bg-stone-50 flex items-center justify-center py-12 px-4">
 
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-8">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-md border border-stone-100 p-8">
 
         <div className="text-center">
 
-          <h1 className="text-4xl font-bold text-blue-600">
-            Welcome to ShopStack 🚀
+          <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full mb-4">
+            ShopStack
+          </span>
+
+          <h1 className="text-3xl font-serif font-bold text-slate-900">
+            Welcome back
           </h1>
 
-          <p className="text-slate-600 mt-3">
-            You have successfully logged in.
+          <p className="text-slate-500 mt-2">
+            You're logged in and ready to shop.
           </p>
 
         </div>
 
-        <div className="mt-8 rounded-xl bg-slate-100 p-5">
+        <div className="mt-8 rounded-xl bg-stone-50 border border-stone-100 p-5">
 
-          <h2 className="text-xl font-semibold text-slate-800">
-            Dashboard
-          </h2>
-
-          <p className="text-slate-600 mt-2">
-            Manage your account, view your profile and update your information.
-          </p>
-
-          <div className="mt-4 flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-green-500"></span>
-            <span className="text-green-700 font-medium">
-              Logged In
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-emerald-700 font-medium text-sm">
+              Account active
             </span>
           </div>
 
+          <p className="text-slate-600 mt-2 text-sm">
+            Manage your account, browse products, and track your orders below.
+          </p>
+
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mt-8">
+        <div className="grid grid-cols-1 gap-3 mt-8">
+
+          <button
+            onClick={() => navigate("/products")}
+            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition"
+          >
+            Browse Products
+          </button>
+
+          <button
+            onClick={() => navigate("/myproducts")}
+            className="w-full border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
+          >
+            My Products
+          </button>
 
           <button
             onClick={() => navigate("/profile")}
-            className="w-full rounded-lg bg-blue-600 py-3 text-white font-semibold hover:bg-blue-700 transition"
+            className="w-full border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
           >
-            👤 View Profile
+            View Profile
           </button>
 
           <button
             onClick={() => navigate("/editprofile")}
-            className="w-full rounded-lg bg-emerald-600 py-3 text-white font-semibold hover:bg-emerald-700 transition"
+            className="w-full border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
           >
-            ✏️ Edit Profile
+            Edit Profile
           </button>
 
           <button
             onClick={handleLogout}
-            className="w-full rounded-lg bg-red-500 py-3 text-white font-semibold hover:bg-red-600 transition"
+            className="w-full border border-rose-200 text-rose-600 hover:bg-rose-50 py-3 rounded-lg font-medium transition"
           >
-            🚪 Logout
+            Logout
           </button>
 
         </div>
 
-        <div className="mt-8 border-t pt-4 text-center text-sm text-slate-500">
-          ShopStack • Enterprise Multi-Vendor E-Commerce Platform
+        <div className="mt-8 border-t border-stone-100 pt-4 text-center text-xs text-slate-400">
+          ShopStack · Enterprise Multi-Vendor E-Commerce Platform
         </div>
 
       </div>

@@ -53,13 +53,12 @@ function EditProfile() {
 
     try {
 
+      // Role is intentionally not sent here — the backend no longer
+      // allows a user to change their own role from this endpoint.
       await updateProfile({
         fullName: formData.fullName,
-        password: formData.password,
-        role: formData.role
+        password: formData.password
       });
-
-      alert("Profile updated successfully!");
 
       navigate("/profile");
 
@@ -73,18 +72,18 @@ function EditProfile() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+    <div className="min-h-screen bg-stone-50 flex items-center justify-center py-12 px-4">
 
-      <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-md border border-stone-100 p-8">
 
-        <h1 className="text-3xl font-bold text-center text-blue-600 mb-6">
+        <h1 className="text-3xl font-serif font-bold text-center text-slate-900 mb-6">
           Edit Profile
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-5">
 
           <div>
-            <label className="block mb-2 text-sm font-medium">
+            <label className="block mb-2 text-sm font-medium text-slate-700">
               Full Name
             </label>
 
@@ -93,15 +92,26 @@ function EditProfile() {
               name="fullName"
               value={formData.fullName}
               onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-3"
+              className="w-full border border-stone-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
               required
             />
           </div>
 
-         
+          <div>
+            <label className="block mb-2 text-sm font-medium text-slate-700">
+              Email
+            </label>
+
+            <input
+              type="email"
+              value={formData.email}
+              disabled
+              className="w-full border border-stone-200 bg-stone-100 text-slate-500 rounded-lg px-4 py-3"
+            />
+          </div>
 
           <div>
-            <label className="block mb-2 text-sm font-medium">
+            <label className="block mb-2 text-sm font-medium text-slate-700">
               New Password
             </label>
 
@@ -111,39 +121,39 @@ function EditProfile() {
               value={formData.password}
               onChange={handleChange}
               placeholder="Leave blank to keep current password"
-              className="w-full border rounded-lg px-4 py-3"
+              className="w-full border border-stone-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
             />
           </div>
 
           <div>
-            <label className="block mb-2 text-sm font-medium">
+            <label className="block mb-2 text-sm font-medium text-slate-700">
               Role
             </label>
 
-            <select
-              name="role"
+            <input
+              type="text"
               value={formData.role}
-              onChange={handleChange}
-              className="w-full border rounded-lg px-4 py-3"
-            >
-              <option value="CUSTOMER">Customer</option>
-              <option value="VENDOR">Vendor</option>
-            </select>
+              disabled
+              className="w-full border border-stone-200 bg-stone-100 text-slate-500 rounded-lg px-4 py-3 capitalize"
+            />
+            <p className="text-xs text-slate-400 mt-2">
+              Contact an administrator to change account roles.
+            </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-2">
 
             <button
               type="button"
               onClick={() => navigate("/profile")}
-              className="flex-1 bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600"
+              className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
+              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition shadow-sm"
             >
               Save Changes
             </button>

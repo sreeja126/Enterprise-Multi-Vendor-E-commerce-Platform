@@ -20,34 +20,54 @@ public class JwtService {
     @Value("${jwt.expiration}")
     private long expiration;
 
+
     private Key getSigningKey() {
-        return new SecretKeySpec(secret.getBytes(),
-                SignatureAlgorithm.HS256.getJcaName());
+
+        return new SecretKeySpec(
+                secret.getBytes(),
+                SignatureAlgorithm.HS256.getJcaName()
+        );
     }
+
 
     public String generateToken(String email) {
 
         return Jwts.builder()
                 .subject(email)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .expiration(
+                        new Date(System.currentTimeMillis() + expiration)
+                )
                 .signWith(getSigningKey())
                 .compact();
     }
 
+
     public String extractEmail(String token) {
 
-        Claims claims = Jwts.parser()
+        return getClaims(token).getSubject();
+    }
+
+
+    private Claims getClaims(String token) {
+
+        return Jwts.parser()
                 .verifyWith((javax.crypto.SecretKey) getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-
-        return claims.getSubject();
     }
+
 
     public boolean isTokenValid(String token, String email) {
 
-        return extractEmail(token).equals(email);
+        Claims claims = getClaims(token);
+
+        String tokenEmail = claims.getSubject();
+
+        Date expirationDate = claims.getExpiration();
+
+        return tokenEmail.equals(email)
+                && expirationDate.after(new Date());
     }
 }
