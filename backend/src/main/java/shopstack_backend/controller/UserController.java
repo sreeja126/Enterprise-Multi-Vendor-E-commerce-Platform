@@ -49,10 +49,10 @@ public class UserController {
             user.setFullName(updatedUser.getFullName());
         }
 
-        // Update Role
-        if (updatedUser.getRole() != null) {
-            user.setRole(updatedUser.getRole());
-        }
+        // Note: Role is intentionally NOT updatable through this endpoint.
+        // Allowing a user to set their own role here would let any
+        // authenticated user grant themselves ADMINISTRATOR privileges.
+        // Role changes should go through a separate admin-only endpoint.
 
         // Update Password
         if (updatedUser.getPassword() != null &&

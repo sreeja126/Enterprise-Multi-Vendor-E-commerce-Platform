@@ -38,7 +38,18 @@ localStorage.setItem("token", response.data.token);
 
      
 
-      navigate("/dashboard");
+     const token = response.data.token;
+
+// Decode JWT payload
+const payload = JSON.parse(atob(token.split(".")[1]));
+
+// Depending on what you store in the token, check the role.
+// If your JWT contains "role":
+if (payload.role === "VENDOR") {
+  navigate("/vendor/dashboard");
+} else {
+  navigate("/dashboard");
+}
 
     } catch (error) {
 
