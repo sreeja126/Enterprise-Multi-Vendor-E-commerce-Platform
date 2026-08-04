@@ -1,191 +1,111 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  getVendorProducts,
-  deleteProduct,
-} from "../services/productService";
+import React, { useState, useEffect } from 'react';
+import productService from '../services/productService';
 
-function MyProducts() {
-
-  const navigate = useNavigate();
+const MyProducts = () => {
   const [products, setProducts] = useState([]);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [stockInputs, setStockInputs] = useState({});
 
   useEffect(() => {
-    loadProducts();
+    fetchProducts();
   }, []);
 
-  const loadProducts = async () => {
+  const fetchProducts = async () => {
     try {
-
-      const response = await getVendorProducts();
-      setProducts(response.data);
-
-    } catch (error) {
-
-      console.error(error);
-
+      const data = await productService.getAllProducts();
+      setProducts(data);
+      const initialInputs = {};
+      data.forEach((p) => {
+        initialInputs[p.id] = p.stockQuantity;
+      });
+      setStockInputs(initialInputs);
+    } catch (err) {
+      console.error('Failed to load products', err);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleInputChange = (id, value) => {
+    setStockInputs((prev) => ({
+      ...prev,
+      [id]: value
+    }));
+  };
 
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete this product?"
-    );
+  const handleUpdateStock = async (id) => {
+    const newQuantity = parseInt(stockInputs[id], 10);
+    if (isNaN(newQuantity) || newQuantity < 0) {
+      alert('Please enter a valid non-negative integer for quantity.');
+      return;
+    }
 
-    if (!confirmDelete) return;
-
+    setUpdatingId(id);
     try {
-
-      await deleteProduct(id);
-      loadProducts();
-
-    } catch (error) {
-
-      console.error(error);
-      alert("Delete failed!");
-
+      await productService.updateStockQuantity(id, newQuantity);
+      await fetchProducts();
+      alert('Stock quantity updated successfully.');
+    } catch (err) {
+      alert('Failed to update stock quantity.');
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   return (
-
-    <div className="min-h-screen bg-stone-50 p-6 md:p-8">
-
-      <div className="max-w-7xl mx-auto">
-
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
-
-          <div>
-            <h1 className="text-4xl font-serif font-bold text-slate-900">
-              My Products
-            </h1>
-            <p className="text-slate-500 mt-1">
-              {products.length} listing{products.length !== 1 ? "s" : ""} in your storefront
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate("/addproduct")}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-3 rounded-lg font-semibold transition shadow-sm whitespace-nowrap"
-          >
-            + Add Product
-          </button>
-
-        </div>
-
-        {products.length === 0 ? (
-
-          <div className="text-center mt-20 bg-white border border-stone-100 rounded-2xl py-16 px-6">
-
-            <h2 className="text-2xl font-semibold text-slate-700">
-              You haven't listed any products yet
-            </h2>
-            <p className="text-slate-500 mt-2">
-              Add your first product to start selling on ShopStack.
-            </p>
-
-            <button
-              onClick={() => navigate("/addproduct")}
-              className="mt-6 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-lg font-semibold transition"
-            >
-              Add Your First Product
-            </button>
-
-          </div>
-
-        ) : (
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-            {products.map((product) => {
-              const imageSrc =
-                product.images && product.images.length > 0
-                  ? product.images[0]
-                  : "https://via.placeholder.com/400x250?text=No+Image";
-
-              return (
-                <div
-                  key={product.id}
-                  className="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-xl transition-shadow duration-300"
+    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+      <h2>Vendor Inventory Management</h2>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+        <thead>
+          <tr style={{ backgroundColor: '#f8fafc', textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
+            <th style={{ padding: '12px' }}>Product</th>
+            <th style={{ padding: '12px' }}>Price</th>
+            <th style={{ padding: '12px' }}>Current Stock</th>
+            <th style={{ padding: '12px' }}>Update Stock</th>
+            <th style={{ padding: '12px' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((p) => (
+            <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+              <td style={{ padding: '12px' }}>{p.name}</td>
+             <td style={{ padding: '12px' }}>₹{p.price?.toFixed(2)}</td>
+              <td style={{ padding: '12px' }}>
+                {p.stockQuantity <= 0 ? (
+                  <span style={{ color: '#ef4444', fontWeight: 'bold' }}>0 (Out of Stock)</span>
+                ) : (
+                  <span>{p.stockQuantity}</span>
+                )}
+              </td>
+              <td style={{ padding: '12px' }}>
+                <input
+                  type="number"
+                  min="0"
+                  value={stockInputs[p.id] !== undefined ? stockInputs[p.id] : ''}
+                  onChange={(e) => handleInputChange(p.id, e.target.value)}
+                  style={{ width: '90px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                />
+              </td>
+              <td style={{ padding: '12px' }}>
+                <button
+                  onClick={() => handleUpdateStock(p.id)}
+                  disabled={updatingId === p.id}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
                 >
-
-                  <img
-                    src={imageSrc}
-                    alt={product.name}
-                    className="w-full h-52 object-cover"
-                  />
-
-                  <div className="p-5">
-
-                    {product.categoryName && (
-                      <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full mb-2">
-                        {product.categoryName}
-                      </span>
-                    )}
-
-                    <h2 className="text-lg font-bold text-slate-900 leading-snug">
-                      {product.name}
-                    </h2>
-                    <p className="text-sm text-slate-500 mb-2">{product.brand}</p>
-
-                    <p className="text-slate-600 text-sm line-clamp-2 mb-3">
-                      {product.description}
-                    </p>
-
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-xl font-bold text-amber-600">
-                        ₹{product.price}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2">
-
-                      <button
-                        onClick={() =>
-                          navigate(`/products/${product.id}`)
-                        }
-                        className="flex-1 bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        View
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          navigate(`/editproduct/${product.id}`)
-                        }
-                        className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        Delete
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                </div>
-              );
-            })}
-
-          </div>
-
-        )}
-
-      </div>
-
+                  {updatingId === p.id ? 'Saving...' : 'Save Stock'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
-
   );
-}
+};
 
 export default MyProducts;

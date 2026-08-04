@@ -4,7 +4,7 @@ import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
 import { registerUser } from "../services/authService";
-import Dashboard from "./Dashboard";
+
 function Register() {
 
   const navigate = useNavigate();
@@ -33,6 +33,7 @@ function Register() {
     }
 
     try {
+
       const response = await registerUser({
         fullName: formData.fullName,
         email: formData.email,
@@ -40,7 +41,7 @@ function Register() {
         role: formData.role,
       });
 
-     
+      alert(response.data);
 
       setFormData({
         fullName: "",
@@ -50,7 +51,7 @@ function Register() {
         role: "CUSTOMER",
       });
 
-      navigate("/dashboard");
+      navigate("/login");
 
     } catch (error) {
 
@@ -61,6 +62,7 @@ function Register() {
       } else {
         alert("Registration failed!");
       }
+
     }
   };
 

@@ -23,8 +23,9 @@ function ProductList() {
 
   const fetchProducts = async () => {
     try {
-      const response = await getAllProducts();
-      setProducts(Array.isArray(response.data) ? response.data : []);
+      const data = await getAllProducts();
+      // Fixed: data is already response.data from productService
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
       setProducts([]);
@@ -32,16 +33,22 @@ function ProductList() {
   };
 
   const fetchCategories = async () => {
-    try {
-      const response = await getAllCategories();
-      setCategories(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      // Backend unreachable, category endpoint down, etc. — the category
-      // filter just won't have options; it should never crash the page.
-      console.error(error);
-      setCategories([]);
-    }
-  };
+  try {
+    const response = await getAllCategories();
+    
+    // Handles response if raw axios, response.data, or nested object
+    const categoryList = Array.isArray(response) 
+      ? response 
+      : Array.isArray(response?.data) 
+        ? response.data 
+        : response?.categories || [];
+
+    setCategories(categoryList);
+  } catch (error) {
+    console.error("Failed to load categories:", error);
+    setCategories([]);
+  }
+};
 
   const handleSearch = async () => {
     try {
@@ -50,8 +57,8 @@ function ProductList() {
         return;
       }
 
-      const response = await searchProducts(keyword);
-      setProducts(response.data);
+      const data = await searchProducts(keyword);
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
       alert("Search failed.");
@@ -60,22 +67,16 @@ function ProductList() {
 
   const handleCategoryFilter = async () => {
     try {
-
       if (categoryId === "") {
         fetchProducts();
         return;
       }
 
-      // The backend expects a category id, not a name.
-      const response = await getProductsByCategory(categoryId);
-
-      setProducts(response.data);
-
+      const data = await getProductsByCategory(categoryId);
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
-
       console.error(error);
       alert("Failed to filter products.");
-
     }
   };
 
@@ -165,10 +166,14 @@ function ProductList() {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((product) => {
+              // Fixed: Supports both product.imageUrl string and product.images array fallback
               const imageSrc =
-                product.images && product.images.length > 0
-                  ? product.images[0]
-                  : "https://via.placeholder.com/400x250?text=No+Image";
+                product.imageUrl ||
+                (product.images && product.images.length > 0 ? product.images[0] : null) ||
+                "https://via.placeholder.com/400x250?text=No+Image";
+
+              // Fixed: Supports product.stockQuantity from Java Entity
+              const stockVal = product.stockQuantity ?? product.stock ?? 0;
 
               return (
                 <div
@@ -183,9 +188,9 @@ function ProductList() {
 
                   <div className="p-5">
 
-                    {product.categoryName && (
+                    {(product.categoryName || product.category?.name) && (
                       <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full mb-2">
-                        {product.categoryName}
+                        {product.categoryName || product.category?.name}
                       </span>
                     )}
 
@@ -202,9 +207,25 @@ function ProductList() {
                       <p className="text-xl font-bold text-amber-600">
                         ₹{product.price}
                       </p>
-                      <p className="text-xs text-slate-400">
-                        {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
-                      </p>
+                      <div>
+                        <p className="text-xs text-slate-500">
+                          <strong>Stock:</strong> {stockVal}
+                        </p>
+
+                        {stockVal === 0 ? (
+                          <p className="text-red-600 text-xs font-semibold">
+                            ❌ Out of Stock
+                          </p>
+                        ) : stockVal <= 5 ? (
+                          <p className="text-orange-500 text-xs font-semibold">
+                            ⚠ Low Stock
+                          </p>
+                        ) : (
+                          <p className="text-green-600 text-xs font-semibold">
+                            ✅ In Stock
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {product.vendor && (
@@ -214,19 +235,33 @@ function ProductList() {
                     )}
 
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => navigate(`/products/${product.id}`)}
-                        className="flex-1 bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        View
-                      </button>
+                    <button
+  onClick={() => {
+    const id = product.id || product._id || product.productId;
+    if (id) {
+      navigate(`/products/${id}`);
+    } else {
+      console.error("Product ID is missing on product object:", product);
+    }
+  }}
+  className="flex-1 bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
+>
+  View
+</button>
 
-                      <button
-                        onClick={() => navigate(`/editproduct/${product.id}`)}
-                        className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        Edit
-                      </button>
+                     <button
+  onClick={() => {
+    const id = product.id || product._id || product.productId;
+    if (id) {
+      navigate(`/products/edit/${id}`); // Must match App.jsx route: /products/edit/:id
+    } else {
+      console.error("Missing product ID:", product);
+    }
+  }}
+  className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition"
+>
+  Edit
+</button>
 
                       <button
                         onClick={() => handleDelete(product.id)}

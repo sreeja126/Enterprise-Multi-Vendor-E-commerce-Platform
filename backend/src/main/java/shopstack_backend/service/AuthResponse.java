@@ -1,4 +1,6 @@
-package shopstack_backend.dto;
+
+
+package shopstack_backend.service;
 
 public class AuthResponse {
 

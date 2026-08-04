@@ -47,20 +47,33 @@ public class AuthService {
     // Login
     public AuthResponse login(LoginRequest request) {
 
-        Optional<User> optionalUser = userRepository.findByEmail(request.getEmail());
+    Optional<User> optionalUser =
+            userRepository.findByEmail(request.getEmail());
 
-        if (optionalUser.isEmpty()) {
-            return new AuthResponse(null, "User not found");
-        }
-
-        User user = optionalUser.get();
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            return new AuthResponse(null, "Invalid Password");
-        }
-
-        String token = jwtService.generateToken(user.getEmail());
-
-        return new AuthResponse(token, "Login Successful");
+    if (optionalUser.isEmpty()) {
+        return new AuthResponse(
+                null,
+                null,
+                "User not found");
     }
+
+    User user = optionalUser.get();
+
+    if (!passwordEncoder.matches(
+            request.getPassword(),
+            user.getPassword())) {
+
+        return new AuthResponse(
+                null,
+                null,
+                "Invalid Password");
+    }
+
+    String token = jwtService.generateToken(user.getEmail());
+
+    return new AuthResponse(
+            token,
+            user.getRole().name(),
+            "Login Successful");
+}
 }
