@@ -16,11 +16,15 @@ public class ProductResponseDTO {
 
     private int stock;
 
+    private boolean isOutOfStock;
+
     private List<String> images;
 
     private String categoryName;
 
     private VendorDTO vendor;
+
+    public ProductResponseDTO() {}
 
     // Getters and Setters
 
@@ -75,6 +79,25 @@ public class ProductResponseDTO {
 
     public void setStock(int stock) {
         this.stock = stock;
+        this.isOutOfStock = (stock <= 0);
+    }
+
+    // Convenience aliases for stock quantity compatibility
+    public int getStockQuantity() {
+        return stock;
+    }
+
+    public void setStockQuantity(int stockQuantity) {
+        this.stock = stockQuantity;
+        this.isOutOfStock = (stockQuantity <= 0);
+    }
+
+    public boolean isOutOfStock() {
+        return isOutOfStock;
+    }
+
+    public void setOutOfStock(boolean outOfStock) {
+        isOutOfStock = outOfStock;
     }
 
 

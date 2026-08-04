@@ -1,8 +1,6 @@
 package shopstack_backend.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
-import java.util.List;
 
 @Entity
 @Table(name = "products")
@@ -12,180 +10,100 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
-    @Column(nullable = false)
     private String name;
 
+    private String brand;
 
     @Column(length = 1000)
     private String description;
 
-
-    @Column(nullable = false)
     private Double price;
 
+    @Column(name = "stock_quantity")
+    private Integer stockQuantity;
 
-    @Column(nullable = false)
-    private Integer stock;
+    private String imageUrl;
 
-
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
-
-    @Column(nullable = false)
-    private String brand;
-
-
-    @ElementCollection
-    @CollectionTable(
-        name = "product_images",
-        joinColumns = @JoinColumn(name = "product_id")
-    )
-    @Column(name = "image_url")
-    private List<String> images;
-
-
-    @ManyToOne
+    // Added missing vendor property mapped by Vendor.java
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
-    private User vendor;
+    private Vendor vendor;
 
-
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
-
-
-    public Product() {
-    }
-
-
-    @PrePersist
-    public void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-
-    @PreUpdate
-    public void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-
-
-    // Getters
+    public Product() {}
 
     public Long getId() {
         return id;
     }
 
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getName() {
         return name;
     }
 
-
-    public String getDescription() {
-        return description;
+    public void setName(String name) {
+        this.name = name;
     }
-
-
-    public Double getPrice() {
-        return price;
-    }
-
-
-    public Integer getStock() {
-        return stock;
-    }
-
 
     public String getBrand() {
         return brand;
     }
 
-
-    public Category getCategory() {
-        return category;
+    public void setBrand(String brand) {
+        this.brand = brand;
     }
 
-
-    public List<String> getImages() {
-        return images;
+    public String getDescription() {
+        return description;
     }
-
-
-    public User getVendor() {
-        return vendor;
-    }
-
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-
-
-    // Setters
-
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
 
     public void setDescription(String description) {
         this.description = description;
     }
 
+    public Double getPrice() {
+        return price;
+    }
 
     public void setPrice(Double price) {
         this.price = price;
     }
 
-
-    public void setStock(Integer stock) {
-        this.stock = stock;
+    public Integer getStockQuantity() {
+        return stockQuantity != null ? stockQuantity : 0;
     }
 
-
-    public void setBrand(String brand) {
-        this.brand = brand;
+    public void setStockQuantity(Integer stockQuantity) {
+        this.stockQuantity = stockQuantity;
     }
 
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
 
     public void setCategory(Category category) {
         this.category = category;
     }
 
-
-    public void setImages(List<String> images) {
-        this.images = images;
+    public Vendor getVendor() {
+        return vendor;
     }
 
-
-    public void setVendor(User vendor) {
+    public void setVendor(Vendor vendor) {
         this.vendor = vendor;
-    }
-
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
     }
 }

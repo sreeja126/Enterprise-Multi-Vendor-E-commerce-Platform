@@ -33,6 +33,7 @@ function Login() {
 
 
 localStorage.setItem("token", response.data.token);
+localStorage.setItem("role", response.data.role);
 
       
 
@@ -45,10 +46,10 @@ const payload = JSON.parse(atob(token.split(".")[1]));
 
 // Depending on what you store in the token, check the role.
 // If your JWT contains "role":
-if (payload.role === "VENDOR") {
-  navigate("/vendor/dashboard");
-} else {
-  navigate("/dashboard");
+if (response.data.role === "VENDOR") {
+    navigate("/vendor-dashboard");
+} else if (response.data.role === "CUSTOMER") {
+    navigate("/customer-dashboard");
 }
 
     } catch (error) {
@@ -100,12 +101,13 @@ if (payload.role === "VENDOR") {
             Remember me
           </label>
 
-          <button
-            type="button"
-            className="font-medium text-blue-600 hover:text-blue-700"
-          >
-            Forgot Password?
-          </button>
+          <div className="text-right mb-4">
+    <Link
+    to="/forgot-password"
+    className="text-blue-600 hover:underline text-sm" >
+    Forgot Password?
+  </Link>
+</div>
 
         </div>
 

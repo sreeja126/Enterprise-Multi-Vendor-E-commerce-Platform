@@ -1,100 +1,87 @@
 package shopstack_backend.controller;
 
-import java.util.List;
-
+import shopstack_backend.dto.ProductRequestDTO; // Ensure this DTO exists in your backend
+import shopstack_backend.dto.ProductResponseDTO;
+import shopstack_backend.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import shopstack_backend.dto.ProductResponseDTO;
-import shopstack_backend.entity.Product;
-import shopstack_backend.service.ProductService;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "*")
 public class ProductController {
 
-    private final ProductService productService;
+    @Autowired
+    private ProductService productService;
 
-    public ProductController(ProductService productService) {
-        this.productService = productService;
+    @GetMapping
+    public ResponseEntity<List<ProductResponseDTO>> getAllProducts() {
+        return ResponseEntity.ok(productService.getAllProducts());
     }
 
-    // Add Product
-   @PostMapping
-public Product addProduct(
-        Authentication authentication,
-        @RequestBody Product product) {
-
-    System.out.println("AUTH = " + authentication);
-
-    return productService.addProduct(
-            product,
-            authentication != null ? authentication.getName() : "TEST"
-    );
-}
-    // Get All Products
- @GetMapping
-public List<ProductResponseDTO> getAllProducts(){
-
-    return productService.getAllProducts();
-}
-    @GetMapping("/test")
-public ResponseEntity<String> test() {
-    return ResponseEntity.ok("Product API working");
-}
-
-    // Get Product By Id
     @GetMapping("/{id}")
-    public ProductResponseDTO getProduct(@PathVariable Long id) {
-        return productService.getProductById(id);
+    public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
+        return ResponseEntity.ok(productService.getProductById(id));
     }
 
-    // Update Product
-   @PutMapping("/{id}")
-public Product updateProduct(
-        @PathVariable Long id,
-        @RequestBody Product product,
-        Authentication authentication) {
-
-    String email = authentication.getName();
-
-    return productService.updateProduct(id, product, email);
-}
-
-    // Delete Product
-   @DeleteMapping("/{id}")
-public String deleteProduct(
-        @PathVariable Long id,
-        Authentication authentication) {
-
-    String email = authentication.getName();
-
-    productService.deleteProduct(id, email);
-
-    return "Product deleted successfully";
-}
-    // Get Logged-in Vendor Products
-    @GetMapping("/vendor")
-    public List<ProductResponseDTO> getVendorProducts(Authentication authentication) {
-
-        return productService.getProductsByVendor(
-                authentication.getName());
-    }
-
-    // Get Products By Category
     @GetMapping("/category/{categoryId}")
-public List<ProductResponseDTO> getByCategory(
-        @PathVariable Long categoryId) {
+    public ResponseEntity<List<ProductResponseDTO>> getProductsByCategory(@PathVariable Long categoryId) {
+        return ResponseEntity.ok(productService.getProductsByCategory(categoryId));
+    }
 
-    return productService.getProductsByCategory(categoryId);
-}
-    // Search Products
     @GetMapping("/search")
-    public List<ProductResponseDTO> searchProducts(
-            @RequestParam String keyword) {
+    public ResponseEntity<List<ProductResponseDTO>> searchProducts(@RequestParam("query") String query) {
+        return ResponseEntity.ok(productService.searchProducts(query));
+    }
 
-        return productService.searchProducts(keyword);
+    // ✅ ADDED: Add new product
+    @PostMapping
+    public ResponseEntity<ProductResponseDTO> addProduct(@RequestBody ProductRequestDTO productDTO) {
+        return ResponseEntity.ok(productService.addProduct(productDTO));
+    }
+
+    // ✅ ADDED: Update existing product (Fixes the 405 Method Not Allowed error!)
+    @PutMapping("/{id}")
+    public ResponseEntity<ProductResponseDTO> updateProduct(@PathVariable Long id, @RequestBody ProductRequestDTO productDTO) {
+        return ResponseEntity.ok(productService.updateProduct(id, productDTO));
+    }
+
+    // ✅ ADDED: Delete product
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}/stock")
+    public ResponseEntity<?> setStockQuantity(@PathVariable Long id, @RequestBody Map<String, Integer> request) {
+        try {
+            Integer stockQuantity = request.get("stockQuantity");
+            if (stockQuantity == null) {
+                return ResponseEntity.badRequest().body("Field 'stockQuantity' is required.");
+            }
+            ProductResponseDTO updated = productService.setStock(id, stockQuantity);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/reduce-stock")
+    public ResponseEntity<?> reduceStockForOrder(@PathVariable Long id, @RequestBody Map<String, Integer> request) {
+        try {
+            Integer quantity = request.get("quantity");
+            if (quantity == null || quantity <= 0) {
+                return ResponseEntity.badRequest().body("Valid purchase 'quantity' is required.");
+            }
+            ProductResponseDTO updated = productService.processOrderDeduction(id, quantity);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

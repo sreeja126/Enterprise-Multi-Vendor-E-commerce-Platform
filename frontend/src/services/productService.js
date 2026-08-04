@@ -1,32 +1,79 @@
-import API from "./api";
+import api from './api';
 
-// Add Product
-export const addProduct = (productData) =>
-  API.post("/products", productData);
+// 1. Get all products
+export const getAllProducts = async () => {
+  const response = await api.get('/products');
+  return response.data;
+};
 
-// Get All Products
-export const getAllProducts = () =>
-  API.get("/products");
+// 2. Get product by ID
+export const getProductById = async (id) => {
+  const response = await api.get(`/products/${id}`);
+  return response.data;
+};
 
-// Get Product By Id
-export const getProductById = (id) =>
-  API.get(`/products/${id}`);
+// 3. Search products by query
+export const searchProducts = async (query) => {
+  const response = await api.get('/products/search', {
+    params: { query }
+  });
+  return response.data;
+};
 
-// Update Product
-export const updateProduct = (id, productData) =>
-  API.put(`/products/${id}`, productData);
+// 4. Get products by category
+export const getProductsByCategory = async (categoryId) => {
+  const response = await api.get(`/products/category/${categoryId}`);
+  return response.data;
+};
 
-// Delete Product
-export const deleteProduct = (id) =>
-  API.delete(`/products/${id}`);
+// 5. Get products by vendor
+export const getVendorProducts = async (vendorId) => {
+  const response = await api.get(`/products/vendor/${vendorId}`);
+  return response.data;
+};
 
-// Get Logged-in Vendor Products
-export const getVendorProducts = () =>
-  API.get("/products/vendor");
+// 6. Add new product
+export const addProduct = async (productData) => {
+  const response = await api.post('/products', productData);
+  return response.data;
+};
 
+// 7. Update product
+export const updateProduct = async (id, productData) => {
+  const response = await api.put(`/products/${id}`, productData);
+  return response.data;
+};
 
-// Filter By Category
-export const getProductsByCategory = (category) =>
-  API.get(`/products/category/${category}`);
-export const searchProducts = (keyword) =>
-    API.get(`/products/search?keyword=${keyword}`);
+// 8. Delete product
+export const deleteProduct = async (id) => {
+  const response = await api.delete(`/products/${id}`);
+  return response.data;
+};
+
+// 9. Inventory: Update stock quantity
+export const updateStockQuantity = async (id, stockQuantity) => {
+  const response = await api.put(`/products/${id}/stock`, { stockQuantity });
+  return response.data;
+};
+
+// 10. Inventory: Reduce stock on order purchase
+export const reduceStockOnOrder = async (id, quantity) => {
+  const response = await api.post(`/products/${id}/reduce-stock`, { quantity });
+  return response.data;
+};
+
+// Default export object containing all methods
+export const productService = {
+  getAllProducts,
+  getProductById,
+  searchProducts,
+  getProductsByCategory,
+  getVendorProducts,
+  addProduct,
+  updateProduct,
+  deleteProduct,
+  updateStockQuantity,
+  reduceStockOnOrder,
+};
+
+export default productService;

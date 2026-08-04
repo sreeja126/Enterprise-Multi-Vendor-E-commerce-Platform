@@ -7,7 +7,6 @@ import {
 import { getAllCategories } from "../services/categoryService";
 
 function EditProduct() {
-
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -21,107 +20,84 @@ function EditProduct() {
     price: "",
     stock: "",
     categoryId: "",
-    imageUrl: ""
+    imageUrl: "",
   });
 
   useEffect(() => {
-
     const loadData = async () => {
-
       try {
+        setLoading(true);
 
-        const [productResult, categoriesResult] = await Promise.allSettled([
-          getProductById(id),
-          getAllCategories()
-        ]);
+        const productData = await getProductById(id);
+        const categoryData = await getAllCategories();
 
-        const categoryList =
-          categoriesResult.status === "fulfilled" &&
-          Array.isArray(categoriesResult.value.data)
-            ? categoriesResult.value.data
-            : [];
+        // Safely extract category list
+        const catList = Array.isArray(categoryData)
+          ? categoryData
+          : categoryData?.data || [];
+        setCategories(catList);
 
-        setCategories(categoryList);
+        if (productData) {
+          // Extract existing image URL (handles array or string)
+          const extractedImage =
+            productData.imageUrl ||
+            productData.image ||
+            (Array.isArray(productData.images) && productData.images.length > 0
+              ? productData.images[0]
+              : "");
 
-        if (categoriesResult.status === "rejected") {
-          console.error(categoriesResult.reason);
+          // Populate formData state
+          setFormData({
+            name: productData.name || "",
+            brand: productData.brand || "",
+            description: productData.description || "",
+            price: productData.price ?? "",
+            stock: productData.stockQuantity ?? productData.stock ?? "",
+            categoryId:
+              productData.categoryId ||
+              productData.category?.id ||
+              "",
+            imageUrl: extractedImage,
+          });
         }
-
-        if (productResult.status === "rejected") {
-          console.error(productResult.reason);
-          alert("Unable to load this product.");
-          return;
-        }
-
-        const product = productResult.value.data;
-
-        // The product read model only returns the category's name
-        // (categoryName), not its id, so match it back against the
-        // category list to preselect the right option.
-        const matchedCategory = categoryList.find(
-          (cat) => cat.name === product.categoryName
-        );
-
-        setFormData({
-          name: product.name || "",
-          brand: product.brand || "",
-          description: product.description || "",
-          price: product.price ?? "",
-          stock: product.stock ?? "",
-          categoryId: matchedCategory ? matchedCategory.id : "",
-          imageUrl: product.images && product.images.length > 0
-            ? product.images[0]
-            : ""
-        });
-
       } catch (error) {
-
-        console.error(error);
-
+        console.error("Error loading edit page data:", error);
       } finally {
-        setLoading(false);
+        setLoading(false); // Stop loading spinner
       }
-
     };
 
     loadData();
-
   }, [id]);
 
   const handleChange = (e) => {
-
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
-
   };
 
   const handleSubmit = async (e) => {
-
     e.preventDefault();
 
     try {
-
       await updateProduct(id, {
         name: formData.name,
         brand: formData.brand,
         description: formData.description,
         price: Number(formData.price),
+        stockQuantity: Number(formData.stock), // Matches Spring Boot entity field
         stock: Number(formData.stock),
         category: formData.categoryId ? { id: Number(formData.categoryId) } : null,
-        images: formData.imageUrl ? [formData.imageUrl] : []
+        imageUrl: formData.imageUrl,
+        images: formData.imageUrl ? [formData.imageUrl] : [],
       });
 
       navigate("/myproducts");
-
     } catch (error) {
-
       console.error(error);
       alert("Update failed.");
-
     }
-
   };
 
   if (loading) {
@@ -133,11 +109,8 @@ function EditProduct() {
   }
 
   return (
-
     <div className="min-h-screen bg-stone-50 flex justify-center items-center py-12 px-4">
-
       <div className="bg-white shadow-md border border-stone-100 rounded-2xl p-8 md:p-10 w-full max-w-2xl">
-
         <div className="mb-8 text-center">
           <span className="inline-block bg-amber-50 text-amber-700 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full mb-3">
             Vendor · Edit Listing
@@ -148,7 +121,6 @@ function EditProduct() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-
           <div>
             <label className="block mb-2 text-sm font-medium text-slate-700">
               Product Name
@@ -192,7 +164,6 @@ function EditProduct() {
           </div>
 
           <div className="grid grid-cols-2 gap-5">
-
             <div>
               <label className="block mb-2 text-sm font-medium text-slate-700">
                 Price (₹)
@@ -223,7 +194,6 @@ function EditProduct() {
                 className="w-full border border-stone-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
               />
             </div>
-
           </div>
 
           <div>
@@ -237,12 +207,15 @@ function EditProduct() {
               required
               className="w-full border border-stone-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
             >
-              <option value="" disabled>Select a category</option>
-              {Array.isArray(categories) && categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
+              <option value="" disabled>
+                Select a category
+              </option>
+              {Array.isArray(categories) &&
+                categories.map((cat) => (
+                  <option key={cat.id || cat.categoryId} value={cat.id || cat.categoryId}>
+                    {cat.name || cat.categoryName}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -261,7 +234,6 @@ function EditProduct() {
           </div>
 
           <div className="flex gap-4 pt-2">
-
             <button
               type="button"
               onClick={() => navigate("/myproducts")}
@@ -276,17 +248,11 @@ function EditProduct() {
             >
               Save Changes
             </button>
-
           </div>
-
         </form>
-
       </div>
-
     </div>
-
   );
-
 }
 
 export default EditProduct;
