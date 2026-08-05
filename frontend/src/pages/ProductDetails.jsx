@@ -1,13 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getProductById } from "../services/productService";
+import { getProductById, reduceStockOnOrder } from "../services/productService";
 
 function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const role = localStorage.getItem("role");
+  const isVendor = role === "VENDOR";
+
   const [product, setProduct] = useState(null);
   const [error, setError] = useState(null);
+  const [purchasing, setPurchasing] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -18,8 +22,7 @@ function ProductDetails() {
         }
 
         const response = await getProductById(id);
-        
-        // Safe extraction handling both direct data & Axios responses
+
         const data = response?.data?.data || response?.data || response;
 
         if (data && typeof data === "object") {
@@ -35,6 +38,24 @@ function ProductDetails() {
 
     fetchProduct();
   }, [id]);
+
+  const handlePurchase = async () => {
+    setPurchasing(true);
+    try {
+      const updated = await reduceStockOnOrder(id, 1);
+      setProduct(updated?.data || updated);
+      alert("Order placed successfully!");
+    } catch (err) {
+      alert(err.response?.data || "Failed to complete purchase. Product may be out of stock.");
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
+  const handleAddToCart = () => {
+    // No Cart module yet — harmless placeholder, doesn't touch stock.
+    alert(`${product.name} added to cart (cart feature coming soon).`);
+  };
 
   if (error) {
     return (
@@ -58,11 +79,9 @@ function ProductDetails() {
     );
   }
 
-  // Safe Fallback SVG (100% offline & instant)
   const FALLBACK_IMAGE =
     "data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%22400%22%20height%3D%22250%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20250%22%3E%3Crect%20fill%3D%22%23e2e8f0%22%20width%3D%22400%22%20height%3D%22250%22%2F%3E%3Ctext%20fill%3D%22%2364748b%22%20font-family%3D%22sans-serif%22%20font-size%3D%2218%22%20text-anchor%3D%22middle%22%20x%3D%22200%22%20y%3D%22130%22%3ENo%20Image%20Available%3C%2Ftext%3E%3C%2Fsvg%3E";
 
-  // Handles imageUrl (string), image (string), or images (array)
   const imageSrc =
     product.imageUrl ||
     product.image ||
@@ -70,9 +89,9 @@ function ProductDetails() {
       ? product.images[0]
       : FALLBACK_IMAGE);
 
-  // Safe category and stock mapping
   const categoryName = product.categoryName || product.category?.name;
   const stockCount = product.stockQuantity ?? product.stock ?? 0;
+  const isOutOfStock = stockCount <= 0 || product.isOutOfStock;
   const productId = product.id || product._id || id;
 
   return (
@@ -118,7 +137,7 @@ function ProductDetails() {
                   <span className="font-semibold">Stock:</span> {stockCount}
                 </p>
 
-                {stockCount === 0 ? (
+                {isOutOfStock ? (
                   <p className="text-red-600 font-semibold">❌ Out of Stock</p>
                 ) : stockCount <= 5 ? (
                   <p className="text-orange-500 font-semibold">⚠️ Low Stock</p>
@@ -155,12 +174,40 @@ function ProductDetails() {
                 Back
               </button>
 
-              <button
-                onClick={() => navigate(`/products/edit/${productId}`)}
-                className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition shadow-sm text-center"
-              >
-                Edit Product
-              </button>
+              {isVendor ? (
+                <button
+                  onClick={() => navigate(`/products/edit/${productId}`)}
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition shadow-sm text-center"
+                >
+                  Edit Product
+                </button>
+              ) : (
+                <>
+                  <button
+                    disabled={isOutOfStock || purchasing}
+                    onClick={handlePurchase}
+                    className={`flex-1 py-3 rounded-lg font-semibold transition shadow-sm ${
+                      isOutOfStock
+                        ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                        : "bg-amber-500 hover:bg-amber-600 text-white"
+                    }`}
+                  >
+                    {isOutOfStock ? "Out of Stock" : purchasing ? "Processing…" : "Buy Now"}
+                  </button>
+
+                  <button
+                    disabled={isOutOfStock}
+                    onClick={handleAddToCart}
+                    className={`flex-1 py-3 rounded-lg font-medium border transition ${
+                      isOutOfStock
+                        ? "border-stone-200 text-stone-400 cursor-not-allowed"
+                        : "border-stone-300 text-slate-700 hover:bg-stone-100"
+                    }`}
+                  >
+                    Add to Cart
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
