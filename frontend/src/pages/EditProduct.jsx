@@ -4,7 +4,7 @@ import {
   getProductById,
   updateProduct,
 } from "../services/productService";
-import { getAllCategories } from "../services/categoryService";
+import { getAllCategories } from "../services/Categoryservice";
 
 function EditProduct() {
   const { id } = useParams();
