@@ -2,6 +2,7 @@ package shopstack_backend.service;
 
 import shopstack_backend.dto.ProductRequestDTO;
 import shopstack_backend.dto.ProductResponseDTO;
+import shopstack_backend.dto.VendorDTO;
 import shopstack_backend.entity.Category;
 import shopstack_backend.entity.Product;
 import shopstack_backend.entity.Vendor;
@@ -72,18 +73,33 @@ public class ProductService {
                 .collect(Collectors.toList());
     }
 
+    // Vendor is always resolved server-side from the logged-in user's email
+    // (the JWT subject) — never trusted from the request body. This is what
+    // stops one vendor from creating a product under another vendor's name.
     @Transactional
-    public ProductResponseDTO addProduct(ProductRequestDTO dto) {
+    public ProductResponseDTO addProduct(ProductRequestDTO dto, String vendorEmail) {
+        if (vendorRepository == null) {
+            throw new RuntimeException("Vendor lookup is not configured on this server");
+        }
+
+        Vendor vendor = vendorRepository.findByEmail(vendorEmail)
+                .orElseThrow(() -> new RuntimeException(
+                        "No vendor profile found for this account. Register as a vendor first."));
+
         Product product = new Product();
         mapDTOToProduct(dto, product);
+        product.setVendor(vendor);
+
         Product saved = productRepository.save(product);
         return mapToDTO(saved);
     }
 
     @Transactional
-    public ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto) {
+    public ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto, String vendorEmail) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
+
+        assertOwnership(product, vendorEmail);
 
         mapDTOToProduct(dto, product);
         Product updated = productRepository.save(product);
@@ -91,26 +107,49 @@ public class ProductService {
     }
 
     @Transactional
-    public void deleteProduct(Long id) {
-        if (!productRepository.existsById(id)) {
-            throw new RuntimeException("Product not found with id: " + id);
+    public void deleteProduct(Long id, String vendorEmail) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
+
+        assertOwnership(product, vendorEmail);
+
+        productRepository.delete(product);
+    }
+
+    // Confirms the logged-in user is the vendor who owns this product.
+    // Throws SecurityException (mapped to 403 in the controller) if not.
+    private void assertOwnership(Product product, String vendorEmail) {
+        Vendor vendor = product.getVendor();
+
+        boolean owns = vendor != null
+                && vendor.getUser() != null
+                && vendor.getUser().getEmail() != null
+                && vendor.getUser().getEmail().equalsIgnoreCase(vendorEmail);
+
+        if (!owns) {
+            throw new SecurityException("You do not have permission to modify this product.");
         }
-        productRepository.deleteById(id);
     }
 
     @Transactional
-    public ProductResponseDTO setStock(Long productId, Integer absoluteStock) {
+    public ProductResponseDTO setStock(Long productId, Integer absoluteStock, String vendorEmail) {
         if (absoluteStock == null || absoluteStock < 0) {
             throw new IllegalArgumentException("Stock quantity cannot be negative.");
         }
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
 
+        assertOwnership(product, vendorEmail);
+
         product.setStockQuantity(absoluteStock);
         Product saved = productRepository.save(product);
         return mapToDTO(saved);
     }
 
+    // Intentionally NOT ownership-checked — this is what a future Order
+    // module will call after checkout for ANY vendor's product, so it must
+    // stay callable regardless of who's logged in (or even system-triggered
+    // with no logged-in user at all).
     @Transactional
     public ProductResponseDTO processOrderDeduction(Long productId, Integer orderQuantity) {
         if (orderQuantity == null || orderQuantity <= 0) {
@@ -129,7 +168,9 @@ public class ProductService {
         return mapToDTO(saved);
     }
 
-    // Helper: Maps DTO to Entity
+    // Helper: Maps DTO to Entity. Vendor is deliberately NOT set here
+    // anymore — addProduct sets it from the authenticated user, and
+    // updateProduct never changes a product's owning vendor at all.
     private void mapDTOToProduct(ProductRequestDTO dto, Product product) {
         if (dto.getName() != null) product.setName(dto.getName());
         if (dto.getDescription() != null) product.setDescription(dto.getDescription());
@@ -137,16 +178,9 @@ public class ProductService {
         if (dto.getStockQuantity() != null) product.setStockQuantity(dto.getStockQuantity());
         if (dto.getImageUrl() != null) product.setImageUrl(dto.getImageUrl());
 
-        // Category Lookup
         if (dto.getCategoryId() != null && categoryRepository != null) {
             Category category = categoryRepository.findById(dto.getCategoryId()).orElse(null);
             product.setCategory(category);
-        }
-
-        // ✅ FIXED: Vendor Lookup using VendorRepository
-        if (dto.getVendorId() != null && vendorRepository != null) {
-            Vendor vendor = vendorRepository.findById(dto.getVendorId()).orElse(null);
-            product.setVendor(vendor);
         }
     }
 
@@ -180,6 +214,15 @@ public class ProductService {
             }
         } catch (Exception e) {
             dto.setCategoryName("General");
+        }
+
+        try {
+            Vendor vendor = product.getVendor();
+            if (vendor != null) {
+                dto.setVendor(new VendorDTO(vendor.getId(), vendor.getName(), vendor.getEmail()));
+            }
+        } catch (Exception e) {
+            // Leave vendor null rather than fail the whole response.
         }
 
         return dto;

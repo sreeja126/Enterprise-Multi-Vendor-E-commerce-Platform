@@ -25,32 +25,24 @@ function Login() {
     e.preventDefault();
 
     try {
-       const response = await loginUser({
-  email: formData.email,
-  password: formData.password,
-});
+      const response = await loginUser({
+        email: formData.email,
+        password: formData.password,
+      });
 
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("role", response.data.role);
 
-
-localStorage.setItem("token", response.data.token);
-localStorage.setItem("role", response.data.role);
-
-      
-
-     
-
-     const token = response.data.token;
-
-// Decode JWT payload
-const payload = JSON.parse(atob(token.split(".")[1]));
-
-// Depending on what you store in the token, check the role.
-// If your JWT contains "role":
-if (response.data.role === "VENDOR") {
-    navigate("/vendor-dashboard");
-} else if (response.data.role === "CUSTOMER") {
-    navigate("/customer-dashboard");
-}
+      if (response.data.role === "VENDOR") {
+        navigate("/vendor-dashboard");
+      } else if (response.data.role === "CUSTOMER") {
+        navigate("/customer-dashboard");
+      } else {
+        // Covers ADMINISTRATOR / WAREHOUSE_STAFF or any future role that
+        // doesn't have a dedicated dashboard yet — send them somewhere
+        // safe instead of silently doing nothing.
+        navigate("/login");
+      }
 
     } catch (error) {
 
