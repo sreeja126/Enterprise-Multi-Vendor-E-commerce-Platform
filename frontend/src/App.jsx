@@ -12,6 +12,9 @@ import MyProducts from "./pages/MyProducts";
 import VendorDashboard from "./pages/VendorDashboard";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+
+
 
 function App() {
     return (
@@ -26,15 +29,12 @@ function App() {
                 <Route   path="/profile"   element={<Profile />} />
                <Route  path="/editprofile" element={<EditProfile />} />
                <Route path="/addproduct" element={<AddProduct />} />
-               {/* /products is role-aware now: ProductList shows Edit/Delete
-                   only to vendors and Buy Now/Add to Cart to customers, so
-                   there's no need for a separate /shop + CustomerProducts
-                   page anymore — one page, correct actions per role. */}
                <Route path="/products" element={<ProductList />} />
                <Route path="/products/:id" element={<ProductDetails />} />
                <Route path="/products/edit/:id" element={<EditProduct />} />
                <Route path="/myproducts" element={<MyProducts />}/>
                <Route path="/forgot-password" element={<ForgotPassword />} />
+               <Route path="/reset-password" element={<ResetPassword />} />
             </Routes>
         </BrowserRouter>
     );

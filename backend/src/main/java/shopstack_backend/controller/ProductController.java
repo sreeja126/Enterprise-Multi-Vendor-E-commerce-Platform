@@ -1,10 +1,12 @@
 package shopstack_backend.controller;
 
-import shopstack_backend.dto.ProductRequestDTO; // Ensure this DTO exists in your backend
+import shopstack_backend.dto.ProductRequestDTO;
 import shopstack_backend.dto.ProductResponseDTO;
 import shopstack_backend.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,7 +14,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "http://localhost:5173")
 public class ProductController {
 
     @Autowired
@@ -38,39 +40,71 @@ public class ProductController {
         return ResponseEntity.ok(productService.searchProducts(query));
     }
 
-    // ✅ ADDED: Add new product
+    // Vendor is derived from the logged-in user (authentication.getName()),
+    // never from the request body — see ProductService.addProduct.
     @PostMapping
-    public ResponseEntity<ProductResponseDTO> addProduct(@RequestBody ProductRequestDTO productDTO) {
-        return ResponseEntity.ok(productService.addProduct(productDTO));
+    public ResponseEntity<?> addProduct(Authentication authentication,
+                                         @RequestBody ProductRequestDTO productDTO) {
+        try {
+            ProductResponseDTO created = productService.addProduct(productDTO, authentication.getName());
+            return ResponseEntity.ok(created);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
-    // ✅ ADDED: Update existing product (Fixes the 405 Method Not Allowed error!)
+    // Only the vendor who owns this product can update it.
     @PutMapping("/{id}")
-    public ResponseEntity<ProductResponseDTO> updateProduct(@PathVariable Long id, @RequestBody ProductRequestDTO productDTO) {
-        return ResponseEntity.ok(productService.updateProduct(id, productDTO));
+    public ResponseEntity<?> updateProduct(@PathVariable Long id,
+                                            Authentication authentication,
+                                            @RequestBody ProductRequestDTO productDTO) {
+        try {
+            ProductResponseDTO updated = productService.updateProduct(id, productDTO, authentication.getName());
+            return ResponseEntity.ok(updated);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
     }
 
-    // ✅ ADDED: Delete product
+    // Only the vendor who owns this product can delete it.
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
-        productService.deleteProduct(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> deleteProduct(@PathVariable Long id, Authentication authentication) {
+        try {
+            productService.deleteProduct(id, authentication.getName());
+            return ResponseEntity.ok().build();
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
     }
 
+    // Only the vendor who owns this product can set its stock directly.
     @PutMapping("/{id}/stock")
-    public ResponseEntity<?> setStockQuantity(@PathVariable Long id, @RequestBody Map<String, Integer> request) {
+    public ResponseEntity<?> setStockQuantity(@PathVariable Long id,
+                                               Authentication authentication,
+                                               @RequestBody Map<String, Integer> request) {
         try {
             Integer stockQuantity = request.get("stockQuantity");
             if (stockQuantity == null) {
                 return ResponseEntity.badRequest().body("Field 'stockQuantity' is required.");
             }
-            ProductResponseDTO updated = productService.setStock(id, stockQuantity);
+            ProductResponseDTO updated = productService.setStock(id, stockQuantity, authentication.getName());
             return ResponseEntity.ok(updated);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
+    // NOT ownership-checked on purpose — this is the seam a future Order
+    // module calls after checkout, for whichever vendor's product was
+    // bought, regardless of who's logged in.
     @PostMapping("/{id}/reduce-stock")
     public ResponseEntity<?> reduceStockForOrder(@PathVariable Long id, @RequestBody Map<String, Integer> request) {
         try {
