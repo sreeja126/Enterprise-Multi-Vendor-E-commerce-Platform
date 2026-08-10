@@ -50,6 +50,7 @@ export const deleteProduct = async (id) => {
   return response.data;
 };
 
+
 // 9. Inventory: Update stock quantity
 export const updateStockQuantity = async (id, stockQuantity) => {
   const response = await api.put(`/products/${id}/stock`, { stockQuantity });
@@ -59,6 +60,12 @@ export const updateStockQuantity = async (id, stockQuantity) => {
 // 10. Inventory: Reduce stock on order purchase
 export const reduceStockOnOrder = async (id, quantity) => {
   const response = await api.post(`/products/${id}/reduce-stock`, { quantity });
+  return response.data;
+};
+
+// 11. Pricing: Set (or clear, with 0) a discount percentage
+export const updateProductDiscount = async (id, discountPercentage) => {
+  const response = await api.put(`/products/${id}/discount`, { discountPercentage });
   return response.data;
 };
 
@@ -74,6 +81,7 @@ export const productService = {
   deleteProduct,
   updateStockQuantity,
   reduceStockOnOrder,
+  updateProductDiscount,
 };
 
 export default productService;

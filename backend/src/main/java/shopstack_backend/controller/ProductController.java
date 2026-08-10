@@ -102,6 +102,26 @@ public class ProductController {
         }
     }
 
+    // Only the vendor who owns this product can set its discount.
+    // discountPercentage is 0-100; send 0 to clear an existing discount.
+    @PutMapping("/{id}/discount")
+    public ResponseEntity<?> setDiscount(@PathVariable Long id,
+                                          Authentication authentication,
+                                          @RequestBody Map<String, Double> request) {
+        try {
+            Double discountPercentage = request.get("discountPercentage");
+            if (discountPercentage == null) {
+                return ResponseEntity.badRequest().body("Field 'discountPercentage' is required.");
+            }
+            ProductResponseDTO updated = productService.setDiscount(id, discountPercentage, authentication.getName());
+            return ResponseEntity.ok(updated);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     // NOT ownership-checked on purpose — this is the seam a future Order
     // module calls after checkout, for whichever vendor's product was
     // bought, regardless of who's logged in.

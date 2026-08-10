@@ -5,9 +5,9 @@ import {
   deleteProduct,
   searchProducts,
   getProductsByCategory,
-  reduceStockOnOrder,
 } from "../services/productService";
 import { getAllCategories } from "../services/Categoryservice";
+import { addToCart } from "../services/cartService";
 
 function ProductList() {
   const navigate = useNavigate();
@@ -102,19 +102,24 @@ function ProductList() {
   const handlePurchase = async (id) => {
     setPurchasingId(id);
     try {
-      await reduceStockOnOrder(id, 1);
-      await fetchProducts();
-      alert("Order placed successfully!");
+      // "Buy Now" = add this one item to the cart, then go straight to
+      // checkout. This is the only path that actually creates a real
+      // Order/Payment — reduceStockOnOrder never did.
+      await addToCart(id, 1);
+      navigate("/checkout");
     } catch (error) {
-      alert(error.response?.data || "Failed to complete purchase. Product may be out of stock.");
-    } finally {
+      alert(error.response?.data || "Failed to start checkout. Product may be out of stock.");
       setPurchasingId(null);
     }
   };
 
-  const handleAddToCart = (product) => {
-    // No Cart module yet — harmless placeholder, doesn't touch stock.
-    alert(`${product.name} added to cart (cart feature coming soon).`);
+  const handleAddToCart = async (product) => {
+    try {
+      await addToCart(product.id, 1);
+      alert(`${product.name} added to cart!`);
+    } catch (error) {
+      alert(error.response?.data || "Failed to add to cart.");
+    }
   };
 
   return (
@@ -198,17 +203,25 @@ function ProductList() {
 
               const stockVal = product.stock ?? product.stockQuantity ?? 0;
               const isOutOfStock = stockVal <= 0 || product.isOutOfStock;
+              const hasDiscount = (product.discountPercentage ?? 0) > 0;
 
               return (
                 <div
                   key={id}
                   className="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-xl transition-shadow duration-300"
                 >
-                  <img
-                    src={imageSrc}
-                    alt={product.name}
-                    className="w-full h-52 object-cover"
-                  />
+                  <div className="relative">
+                    <img
+                      src={imageSrc}
+                      alt={product.name}
+                      className="w-full h-52 object-cover"
+                    />
+                    {hasDiscount && (
+                      <span className="absolute top-3 left-3 bg-rose-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-sm">
+                        {Math.round(product.discountPercentage)}% OFF
+                      </span>
+                    )}
+                  </div>
 
                   <div className="p-5">
 
@@ -228,9 +241,22 @@ function ProductList() {
                     </p>
 
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-xl font-bold text-amber-600">
-                        ₹{product.price}
-                      </p>
+                      <div>
+                        {hasDiscount ? (
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-slate-400 line-through text-sm">
+                              ₹{product.price}
+                            </span>
+                            <span className="text-xl font-bold text-amber-600">
+                              ₹{product.finalPrice}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-xl font-bold text-amber-600">
+                            ₹{product.price}
+                          </p>
+                        )}
+                      </div>
 
                       {isOutOfStock ? (
                         <span className="text-rose-600 text-xs font-semibold">

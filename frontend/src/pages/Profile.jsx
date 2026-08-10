@@ -21,7 +21,19 @@ function Profile() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
     navigate("/login");
+  };
+
+  // Dynamic dashboard navigation based on user role
+  const handleDashboardRedirect = () => {
+    const role = (user?.role || localStorage.getItem("role") || "").toUpperCase();
+    
+    if (role === "VENDOR") {
+      navigate("/vendor-dashboard");
+    } else {
+      navigate("/customer-dashboard");
+    }
   };
 
   if (!user) {
@@ -33,68 +45,85 @@ function Profile() {
   }
 
   const initials = user.fullName
-    ? user.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+    ? user.fullName
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
     : "?";
 
   return (
     <div className="min-h-screen bg-stone-50 flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-lg bg-white shadow-md border border-stone-100 rounded-2xl p-8">
-
+      <div className="w-full max-w-lg bg-white shadow-sm border border-stone-200 rounded-2xl p-8">
+        
+        {/* Profile Avatar & Header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="h-20 w-20 rounded-full bg-emerald-700 text-white flex items-center justify-center text-2xl font-bold mb-4">
+          <div className="h-20 w-20 rounded-full bg-slate-900 text-white flex items-center justify-center text-2xl font-bold mb-4 shadow-sm">
             {initials}
           </div>
           <h1 className="text-2xl font-serif font-bold text-slate-900">
             {user.fullName}
           </h1>
-          <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full mt-2">
-            {user.role}
+          <span className="inline-block bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full mt-2">
+            {user.role} Account
           </span>
         </div>
 
+        {/* Info Cards */}
         <div className="space-y-4">
-
-          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
-            <p className="text-slate-400 text-xs uppercase tracking-wide">Full Name</p>
-            <p className="text-lg font-semibold text-slate-900">{user.fullName}</p>
+          <div className="border border-stone-200 rounded-xl p-4 bg-stone-50/50">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              Full Name
+            </p>
+            <p className="text-base font-semibold text-slate-900 mt-0.5">
+              {user.fullName}
+            </p>
           </div>
 
-          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
-            <p className="text-slate-400 text-xs uppercase tracking-wide">Email</p>
-            <p className="text-lg font-semibold text-slate-900">{user.email}</p>
+          <div className="border border-stone-200 rounded-xl p-4 bg-stone-50/50">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              Email Address
+            </p>
+            <p className="text-base font-semibold text-slate-900 mt-0.5">
+              {user.email}
+            </p>
           </div>
 
-          <div className="border border-stone-100 rounded-xl p-4 bg-stone-50">
-            <p className="text-slate-400 text-xs uppercase tracking-wide">Role</p>
-            <p className="text-lg font-semibold text-slate-900">{user.role}</p>
+          <div className="border border-stone-200 rounded-xl p-4 bg-stone-50/50">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
+              Role
+            </p>
+            <p className="text-base font-semibold text-slate-900 mt-0.5 capitalize">
+              {user.role?.toLowerCase()}
+            </p>
           </div>
-
         </div>
 
-        <div className="flex gap-3 mt-8">
-
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-8">
           <button
-            onClick={() => navigate("/dashboard")}
-            className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
+            onClick={handleDashboardRedirect}
+            className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2.5 rounded-lg text-sm font-semibold transition"
           >
             Dashboard
           </button>
 
           <button
             onClick={() => navigate("/editprofile")}
-            className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition"
+            className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-semibold transition shadow-sm"
           >
             Edit Profile
           </button>
 
           <button
             onClick={handleLogout}
-            className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-3 rounded-lg font-medium transition"
+            className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2.5 rounded-lg text-sm font-semibold transition"
           >
             Logout
           </button>
-
         </div>
+
       </div>
     </div>
   );

@@ -4,8 +4,19 @@ function Navbar() {
   const navigate = useNavigate();
 
   const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
-  const isVendor = role === "VENDOR";
+  // Normalize role check (handles "vendor", "VENDOR", "Vendor", etc.)
+  const rawRole = localStorage.getItem("role") || "";
+  const isVendor = rawRole.toUpperCase() === "VENDOR";
+
+  const handleBrandClick = () => {
+    if (!token) {
+      navigate("/login");
+    } else if (isVendor) {
+      navigate("/vendor-dashboard");
+    } else {
+      navigate("/customer-dashboard");
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -17,16 +28,20 @@ function Navbar() {
     <header className="sticky top-0 z-40 bg-white text-slate-900 border-b border-stone-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
 
-        <Link
-          to={token ? (isVendor ? "/vendor-dashboard" : "/customer-dashboard") : "/login"}
-          className="text-xl font-serif font-bold tracking-tight text-slate-900"
+        {/* ShopStack Brand Button */}
+        <button
+          type="button"
+          onClick={handleBrandClick}
+          className="flex items-center gap-2 group text-left text-xl font-serif font-bold tracking-tight text-slate-900 focus:outline-none cursor-pointer"
         >
-          ShopStack
-        </Link>
+          <div className="h-8 w-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-sans text-sm font-bold transition group-hover:bg-slate-800">
+            S
+          </div>
+          <span>ShopStack</span>
+        </button>
 
         {token && (
           <nav className="hidden md:flex items-center gap-1 text-sm">
-
             <Link
               to="/products"
               className="px-3 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-stone-100 transition"
@@ -71,7 +86,6 @@ function Navbar() {
                 </Link>
               </>
             )}
-
           </nav>
         )}
 

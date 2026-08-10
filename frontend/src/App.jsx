@@ -13,8 +13,10 @@ import VendorDashboard from "./pages/VendorDashboard";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
-
-
+import Cart from "./pages/Cart";
+import Checkout from "./pages/Checkout";
+import OrderHistory from "./pages/OrderHistory";
+import OrderDetails from "./pages/OrderDetails";
 
 function App() {
     return (
@@ -35,6 +37,10 @@ function App() {
                <Route path="/myproducts" element={<MyProducts />}/>
                <Route path="/forgot-password" element={<ForgotPassword />} />
                <Route path="/reset-password" element={<ResetPassword />} />
+               <Route path="/cart" element={<Cart />} />
+               <Route path="/checkout" element={<Checkout />} />
+<Route path="/orders" element={<OrderHistory />} />
+<Route path="/orders/:id" element={<OrderDetails />} />
             </Routes>
         </BrowserRouter>
     );
