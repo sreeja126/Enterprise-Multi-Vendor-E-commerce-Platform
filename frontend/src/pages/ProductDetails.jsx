@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getProductById, reduceStockOnOrder } from "../services/productService";
+import { getProductById } from "../services/productService";
+import { addToCart } from "../services/cartService";
 
 function ProductDetails() {
   const { id } = useParams();
@@ -42,19 +43,24 @@ function ProductDetails() {
   const handlePurchase = async () => {
     setPurchasing(true);
     try {
-      const updated = await reduceStockOnOrder(id, 1);
-      setProduct(updated?.data || updated);
-      alert("Order placed successfully!");
+      // "Buy Now" = add this one item to the cart, then go straight to
+      // checkout. This is the only path that actually creates a real
+      // Order/Payment — reduceStockOnOrder never did.
+      await addToCart(product.id, 1);
+      navigate("/checkout");
     } catch (err) {
-      alert(err.response?.data || "Failed to complete purchase. Product may be out of stock.");
-    } finally {
+      alert(err.response?.data || "Failed to start checkout. Product may be out of stock.");
       setPurchasing(false);
     }
   };
 
-  const handleAddToCart = () => {
-    // No Cart module yet — harmless placeholder, doesn't touch stock.
-    alert(`${product.name} added to cart (cart feature coming soon).`);
+  const handleAddToCart = async () => {
+    try {
+      await addToCart(product.id, 1);
+      alert(`${product.name} added to cart!`);
+    } catch (err) {
+      alert(err.response?.data || "Failed to add to cart.");
+    }
   };
 
   if (error) {
@@ -124,9 +130,23 @@ function ProductDetails() {
 
               <p className="text-slate-500 mb-6">{product.brand || "N/A"}</p>
 
-              <p className="text-3xl font-bold text-amber-600 mb-6">
-                ₹{product.price}
-              </p>
+              {(product.discountPercentage ?? 0) > 0 ? (
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="text-lg text-slate-400 line-through">
+                    ₹{product.price}
+                  </span>
+                  <span className="text-3xl font-bold text-amber-600">
+                    ₹{product.finalPrice}
+                  </span>
+                  <span className="bg-rose-50 text-rose-600 text-xs font-bold px-2 py-1 rounded-md">
+                    {Math.round(product.discountPercentage)}% OFF
+                  </span>
+                </div>
+              ) : (
+                <p className="text-3xl font-bold text-amber-600 mb-6">
+                  ₹{product.price}
+                </p>
+              )}
 
               <p className="text-slate-600 leading-relaxed mb-6">
                 {product.description || "No description available."}

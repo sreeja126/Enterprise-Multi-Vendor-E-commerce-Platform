@@ -14,6 +14,10 @@ public class ProductResponseDTO {
 
     private double price;
 
+    private double discountPercentage;
+
+    private double finalPrice;
+
     private int stock;
 
     private boolean isOutOfStock;
@@ -70,6 +74,24 @@ public class ProductResponseDTO {
 
     public void setPrice(double price) {
         this.price = price;
+    }
+
+
+    public double getDiscountPercentage() {
+        return discountPercentage;
+    }
+
+    public void setDiscountPercentage(double discountPercentage) {
+        this.discountPercentage = discountPercentage;
+    }
+
+
+    public double getFinalPrice() {
+        return finalPrice;
+    }
+
+    public void setFinalPrice(double finalPrice) {
+        this.finalPrice = finalPrice;
     }
 
 

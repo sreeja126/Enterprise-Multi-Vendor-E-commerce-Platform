@@ -24,6 +24,10 @@ public class Product {
 
     private String imageUrl;
 
+    // Percentage off, 0-100. Null/0 means no discount is active.
+    @Column(name = "discount_percentage")
+    private Double discountPercentage;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
@@ -89,6 +93,29 @@ public class Product {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public Double getDiscountPercentage() {
+        return discountPercentage != null ? discountPercentage : 0.0;
+    }
+
+    public void setDiscountPercentage(Double discountPercentage) {
+        this.discountPercentage = discountPercentage;
+    }
+
+    // The price the customer actually pays. Computed, not stored — so it's
+    // always consistent with price/discountPercentage and can never drift
+    // out of sync in the database.
+    public Double getFinalPrice() {
+        if (price == null) {
+            return 0.0;
+        }
+        double discount = getDiscountPercentage();
+        if (discount <= 0) {
+            return price;
+        }
+        double final_ = price - (price * discount / 100.0);
+        return Math.round(final_ * 100.0) / 100.0;
     }
 
     public Category getCategory() {

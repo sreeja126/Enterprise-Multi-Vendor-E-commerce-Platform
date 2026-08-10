@@ -146,6 +146,24 @@ public class ProductService {
         return mapToDTO(saved);
     }
 
+    // Apply (or clear, by passing 0) a discount percentage on a product.
+    // Ownership-checked the same way as setStock — a vendor can only
+    // discount their own products.
+    @Transactional
+    public ProductResponseDTO setDiscount(Long productId, Double discountPercentage, String vendorEmail) {
+        if (discountPercentage == null || discountPercentage < 0 || discountPercentage > 100) {
+            throw new IllegalArgumentException("Discount must be between 0 and 100.");
+        }
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
+
+        assertOwnership(product, vendorEmail);
+
+        product.setDiscountPercentage(discountPercentage);
+        Product saved = productRepository.save(product);
+        return mapToDTO(saved);
+    }
+
     // Intentionally NOT ownership-checked — this is what a future Order
     // module will call after checkout for ANY vendor's product, so it must
     // stay callable regardless of who's logged in (or even system-triggered
@@ -196,6 +214,8 @@ public class ProductService {
         dto.setBrand(product.getBrand() != null ? product.getBrand() : "");
         dto.setDescription(product.getDescription() != null ? product.getDescription() : "");
         dto.setPrice(product.getPrice() != null ? product.getPrice() : 0.0);
+        dto.setDiscountPercentage(product.getDiscountPercentage());
+        dto.setFinalPrice(product.getFinalPrice());
 
         int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
         dto.setStock(stock);
