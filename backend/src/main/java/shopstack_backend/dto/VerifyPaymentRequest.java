@@ -5,6 +5,7 @@ public class VerifyPaymentRequest {
     private String razorpayOrderId;
     private String razorpayPaymentId;
     private String razorpaySignature;
+    private Long addressId;
 
     public VerifyPaymentRequest() {}
 
@@ -30,5 +31,13 @@ public class VerifyPaymentRequest {
 
     public void setRazorpaySignature(String razorpaySignature) {
         this.razorpaySignature = razorpaySignature;
+    }
+
+    public Long getAddressId() {
+        return addressId;
+    }
+
+    public void setAddressId(Long addressId) {
+        this.addressId = addressId;
     }
 }

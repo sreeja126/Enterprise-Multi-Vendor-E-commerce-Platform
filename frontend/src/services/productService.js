@@ -26,9 +26,9 @@ export const getProductsByCategory = async (categoryId) => {
   return response.data;
 };
 
-// 5. Get products by vendor
-export const getVendorProducts = async (vendorId) => {
-  const response = await api.get(`/products/vendor/${vendorId}`);
+// 5. Get only the logged-in vendor's own products (for My Products / Inventory)
+export const getVendorProducts = async () => {
+  const response = await api.get('/products/vendor');
   return response.data;
 };
 
@@ -49,7 +49,6 @@ export const deleteProduct = async (id) => {
   const response = await api.delete(`/products/${id}`);
   return response.data;
 };
-
 
 // 9. Inventory: Update stock quantity
 export const updateStockQuantity = async (id, stockQuantity) => {

@@ -2,16 +2,35 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCart } from "../services/cartService";
 import { createRazorpayOrder, verifyPayment } from "../services/paymentService";
+import { getAddresses, addAddress } from "../services/addressService";
+
+const emptyForm = {
+  fullName: "",
+  phone: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "India",
+};
 
 function Checkout() {
   const navigate = useNavigate();
 
   const [cart, setCart] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [savingAddress, setSavingAddress] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
 
   useEffect(() => {
     fetchCart();
+    fetchAddresses();
   }, []);
 
   const fetchCart = async () => {
@@ -25,15 +44,55 @@ function Checkout() {
     }
   };
 
+  const fetchAddresses = async () => {
+    try {
+      const data = await getAddresses();
+      setAddresses(data);
+
+      const defaultAddr = data.find((a) => a.default) || data[0];
+      if (defaultAddr) {
+        setSelectedAddressId(defaultAddr.id);
+      } else {
+        setShowAddForm(true);
+      }
+    } catch (err) {
+      console.error("Failed to load addresses", err);
+    }
+  };
+
+  const handleFormChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSaveAddress = async (e) => {
+    e.preventDefault();
+    setSavingAddress(true);
+    try {
+      await addAddress(form);
+      const updated = await getAddresses();
+      setAddresses(updated);
+      const newest = updated[updated.length - 1];
+      setSelectedAddressId(newest.id);
+      setShowAddForm(false);
+      setForm(emptyForm);
+    } catch (err) {
+      alert(err.response?.data || "Failed to save address.");
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
   const handlePlaceOrder = async () => {
+    if (!selectedAddressId) {
+      alert("Please add or select a shipping address first.");
+      return;
+    }
+
     setPlacing(true);
 
     try {
-      // Step 1: ask our backend to create a Razorpay order for the
-      // current cart total.
       const razorpayOrder = await createRazorpayOrder();
 
-      // Step 2: open Razorpay's actual payment modal.
       const options = {
         key: razorpayOrder.keyId,
         amount: razorpayOrder.amountInPaise,
@@ -42,18 +101,13 @@ function Checkout() {
         description: "Order Payment",
         order_id: razorpayOrder.razorpayOrderId,
 
-        // Called by Razorpay only after the customer completes payment
-        // successfully in the modal.
         handler: async (response) => {
           try {
-            // Step 3: send Razorpay's response back to our backend so it
-            // can verify the signature and only THEN create the real
-            // order. We never create the order client-side or trust this
-            // callback firing as proof of payment on its own.
             const order = await verifyPayment({
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
+              addressId: selectedAddressId,
             });
 
             navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
@@ -65,7 +119,6 @@ function Checkout() {
         },
 
         modal: {
-          // Customer closed the payment modal without paying.
           ondismiss: () => {
             setPlacing(false);
           },
@@ -124,6 +177,130 @@ function Checkout() {
           Checkout
         </h1>
 
+        {/* Shipping Address */}
+        <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-900">Shipping Address</h2>
+            {addresses.length > 0 && !showAddForm && (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="text-emerald-700 hover:text-emerald-800 text-sm font-semibold"
+              >
+                + Add New
+              </button>
+            )}
+          </div>
+
+          {addresses.length > 0 && (
+            <div className="space-y-3 mb-4">
+              {addresses.map((addr) => (
+                <label
+                  key={addr.id}
+                  className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition ${
+                    selectedAddressId === addr.id
+                      ? "border-emerald-600 bg-emerald-50"
+                      : "border-stone-200 hover:border-stone-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="address"
+                    checked={selectedAddressId === addr.id}
+                    onChange={() => setSelectedAddressId(addr.id)}
+                    className="mt-1"
+                  />
+                  <div className="text-sm">
+                    <p className="font-semibold text-slate-900">
+                      {addr.fullName}
+                      {addr.default && (
+                        <span className="ml-2 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          Default
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-slate-600">
+                      {addr.addressLine1}{addr.addressLine2 ? `, ${addr.addressLine2}` : ""}
+                    </p>
+                    <p className="text-slate-600">
+                      {addr.city}, {addr.state} {addr.postalCode}, {addr.country}
+                    </p>
+                    <p className="text-slate-500">{addr.phone}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {showAddForm && (
+            <form onSubmit={handleSaveAddress} className="space-y-3 border-t border-stone-100 pt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  name="fullName" placeholder="Full Name" required
+                  value={form.fullName} onChange={handleFormChange}
+                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  name="phone" placeholder="Phone" required
+                  value={form.phone} onChange={handleFormChange}
+                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <input
+                name="addressLine1" placeholder="Address Line 1" required
+                value={form.addressLine1} onChange={handleFormChange}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                name="addressLine2" placeholder="Address Line 2 (optional)"
+                value={form.addressLine2} onChange={handleFormChange}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <input
+                  name="city" placeholder="City" required
+                  value={form.city} onChange={handleFormChange}
+                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  name="state" placeholder="State" required
+                  value={form.state} onChange={handleFormChange}
+                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  name="postalCode" placeholder="Postal Code" required
+                  value={form.postalCode} onChange={handleFormChange}
+                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <input
+                name="country" placeholder="Country" required
+                value={form.country} onChange={handleFormChange}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm"
+              />
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="submit"
+                  disabled={savingAddress}
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-lg text-sm font-semibold transition"
+                >
+                  {savingAddress ? "Saving…" : "Save Address"}
+                </button>
+                {addresses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="px-4 border border-stone-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-stone-100 transition"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* Order Summary */}
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Order Summary</h2>
 
@@ -154,7 +331,7 @@ function Checkout() {
 
         <button
           onClick={handlePlaceOrder}
-          disabled={placing}
+          disabled={placing || !selectedAddressId}
           className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white py-4 rounded-lg font-semibold text-lg transition"
         >
           {placing ? "Processing…" : `Pay ₹${cart.totalAmount} with Razorpay`}

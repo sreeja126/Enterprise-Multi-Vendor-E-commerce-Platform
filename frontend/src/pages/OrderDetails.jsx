@@ -88,6 +88,23 @@ function OrderDetails() {
           ))}
         </div>
 
+        {order.shippingFullName && (
+          <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-bold text-slate-900 mb-3">Shipping Address</h2>
+            <div className="text-sm text-slate-600 space-y-0.5">
+              <p className="font-semibold text-slate-900">{order.shippingFullName}</p>
+              <p>
+                {order.shippingAddressLine1}
+                {order.shippingAddressLine2 ? `, ${order.shippingAddressLine2}` : ""}
+              </p>
+              <p>
+                {order.shippingCity}, {order.shippingState} {order.shippingPostalCode}, {order.shippingCountry}
+              </p>
+              <p>{order.shippingPhone}</p>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6 flex justify-between items-center mb-6">
           <span className="text-lg font-bold text-slate-900">Total Paid</span>
           <span className="text-2xl font-bold text-amber-600">₹{order.totalAmount}</span>

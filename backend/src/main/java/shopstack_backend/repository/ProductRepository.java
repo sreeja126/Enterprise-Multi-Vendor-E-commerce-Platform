@@ -7,13 +7,15 @@ import org.springframework.stereotype.Repository;
 
 import shopstack_backend.entity.Product;
 import shopstack_backend.entity.User;
+import shopstack_backend.entity.Vendor;
+
 import java.util.Optional;
 
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // Get all products of a specific vendor
-    List<Product> findByVendor(User vendor);
+    List<Product> findByVendor(Vendor vendor);
 
     // Search products by category
     List<Product> findByCategoryId(Long categoryId);

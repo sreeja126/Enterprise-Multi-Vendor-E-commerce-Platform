@@ -8,6 +8,7 @@ import shopstack_backend.dto.OrderItemResponseDTO;
 import shopstack_backend.dto.OrderResponseDTO;
 import shopstack_backend.dto.PaymentResponseDTO;
 import shopstack_backend.entity.*;
+import shopstack_backend.repository.AddressRepository;
 import shopstack_backend.repository.CartRepository;
 import shopstack_backend.repository.OrderRepository;
 import shopstack_backend.repository.PaymentRepository;
@@ -38,10 +39,15 @@ public class OrderService {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    @Autowired
+    private AddressRepository addressRepository;
+
     // Turns the logged-in customer's cart into a real Order:
     // 1. Re-validates every item's stock right now (it may have changed
     //    since it was added to the cart).
-    // 2. Snapshots each item's name and finalPrice at time of purchase.
+    // 2. Snapshots each item's name and finalPrice at time of purchase,
+    //    AND the chosen shipping address — so editing/deleting an address
+    //    later never rewrites what a past order shipped to.
     // 3. Actually reduces stock for every item.
     // 4. Records the payment that was already verified as successful
     //    (Razorpay signature check happens in RazorpayPaymentService,
@@ -50,7 +56,7 @@ public class OrderService {
     // All in one transaction — if any item fails validation, nothing is
     // committed and nothing is charged/reduced.
     @Transactional
-    public OrderResponseDTO checkout(String email, String paymentMethod, String transactionId) {
+    public OrderResponseDTO checkout(String email, Long addressId, String paymentMethod, String transactionId) {
 
         Cart cart = cartRepository.findByUserEmail(email)
                 .orElseThrow(() -> new IllegalStateException("Your cart is empty."));
@@ -61,6 +67,10 @@ public class OrderService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Address address = addressRepository.findByIdAndUserEmail(addressId, email)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Please select a valid shipping address before checking out."));
 
         // Validate every item BEFORE changing anything, so a failure partway
         // through never leaves stock partially reduced.
@@ -77,6 +87,17 @@ public class OrderService {
         Order order = new Order();
         order.setUser(user);
         order.setStatus(OrderStatus.PENDING);
+
+        // Snapshot the address now — Order stores its own copy of these
+        // fields, not a foreign key to Address.
+        order.setShippingFullName(address.getFullName());
+        order.setShippingPhone(address.getPhone());
+        order.setShippingAddressLine1(address.getAddressLine1());
+        order.setShippingAddressLine2(address.getAddressLine2());
+        order.setShippingCity(address.getCity());
+        order.setShippingState(address.getState());
+        order.setShippingPostalCode(address.getPostalCode());
+        order.setShippingCountry(address.getCountry());
 
         List<OrderItem> orderItems = new ArrayList<>();
         double total = 0;
@@ -120,12 +141,14 @@ public class OrderService {
         return mapToDTO(saved, payment);
     }
 
-    // Kept for quick local testing without going through Razorpay at all
-    // (e.g. automated tests, or a demo where you don't want to click
-    // through the payment modal every time).
+    // Kept for quick local testing without going through Razorpay at all.
+    // Uses the customer's default address automatically.
     @Transactional
     public OrderResponseDTO checkout(String email) {
-        return checkout(email, "SIMULATED", "TXN-" + UUID.randomUUID());
+        Address defaultAddress = addressRepository.findByUserEmailAndIsDefaultTrue(email)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No default address on file. Add a shipping address first."));
+        return checkout(email, defaultAddress.getId(), "SIMULATED", "TXN-" + UUID.randomUUID());
     }
 
     private Payment recordPayment(Order order, String method, String transactionId) {
@@ -165,6 +188,15 @@ public class OrderService {
         dto.setStatus(order.getStatus().name());
         dto.setTotalAmount(order.getTotalAmount());
         dto.setCreatedAt(order.getCreatedAt());
+
+        dto.setShippingFullName(order.getShippingFullName());
+        dto.setShippingPhone(order.getShippingPhone());
+        dto.setShippingAddressLine1(order.getShippingAddressLine1());
+        dto.setShippingAddressLine2(order.getShippingAddressLine2());
+        dto.setShippingCity(order.getShippingCity());
+        dto.setShippingState(order.getShippingState());
+        dto.setShippingPostalCode(order.getShippingPostalCode());
+        dto.setShippingCountry(order.getShippingCountry());
 
         List<OrderItemResponseDTO> itemDTOs = order.getItems().stream().map(item -> {
             OrderItemResponseDTO itemDto = new OrderItemResponseDTO();

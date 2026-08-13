@@ -25,6 +25,18 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProducts());
     }
 
+    // Only the logged-in vendor's own products — this is what My Products /
+    // Inventory must call. Placed before /{id} so Spring doesn't try to
+    // parse "vendor" as a product id.
+    @GetMapping("/vendor")
+    public ResponseEntity<?> getMyProducts(Authentication authentication) {
+        try {
+            return ResponseEntity.ok(productService.getMyProducts(authentication.getName()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
         return ResponseEntity.ok(productService.getProductById(id));

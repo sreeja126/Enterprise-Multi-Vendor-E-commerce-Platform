@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 public class ProductRequestDTO {
 
     private String name;
+    private String brand;
     private String description;
     private BigDecimal price;
     private Integer stockQuantity;
@@ -17,8 +18,9 @@ public class ProductRequestDTO {
     }
 
     // Parameterized Constructor
-    public ProductRequestDTO(String name, String description, BigDecimal price, Integer stockQuantity, Long categoryId, Long vendorId, String imageUrl) {
+    public ProductRequestDTO(String name, String brand, String description, BigDecimal price, Integer stockQuantity, Long categoryId, Long vendorId, String imageUrl) {
         this.name = name;
+        this.brand = brand;
         this.description = description;
         this.price = price;
         this.stockQuantity = stockQuantity;
@@ -34,6 +36,14 @@ public class ProductRequestDTO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
     }
 
     public String getDescription() {

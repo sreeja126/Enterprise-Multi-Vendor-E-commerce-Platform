@@ -30,4 +30,10 @@ build/
 !**/src/test/**/build/
 
 ### VS Code ###
-.vscode/
+\.vscode
+# Ignore Spring Boot configuration containing real secrets
+\backend\src\main\resources\application.properties
+src/main/resources/application.properties
+src/main/resources/application-*.properties
+src/main/resources/application.yml
+src/main/resources/application-*.yml
