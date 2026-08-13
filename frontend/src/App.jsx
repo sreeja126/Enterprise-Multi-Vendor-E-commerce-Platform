@@ -17,6 +17,7 @@ import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import OrderHistory from "./pages/OrderHistory";
 import OrderDetails from "./pages/OrderDetails";
+import Wishlist from "./pages/Wishlist";
 
 function App() {
     return (
@@ -41,6 +42,7 @@ function App() {
                <Route path="/checkout" element={<Checkout />} />
 <Route path="/orders" element={<OrderHistory />} />
 <Route path="/orders/:id" element={<OrderDetails />} />
+   <Route path="/wishlist" element={<Wishlist />} />
             </Routes>
         </BrowserRouter>
     );

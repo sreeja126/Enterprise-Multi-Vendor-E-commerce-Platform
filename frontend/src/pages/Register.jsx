@@ -6,7 +6,6 @@ import Button from "../components/Button";
 import { registerUser } from "../services/authService";
 
 function Register() {
-
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -33,7 +32,6 @@ function Register() {
     }
 
     try {
-
       const response = await registerUser({
         fullName: formData.fullName,
         email: formData.email,
@@ -41,8 +39,9 @@ function Register() {
         role: formData.role,
       });
 
-      alert(response.data);
+      alert(response.data?.message || response.data || "Registration successful!");
 
+      // Clean up state
       setFormData({
         fullName: "",
         email: "",
@@ -51,10 +50,18 @@ function Register() {
         role: "CUSTOMER",
       });
 
-      navigate("/login");
+      // -------------------------------------------------------------
+      // Dynamic Redirection based on selected role
+      // -------------------------------------------------------------
+      const assignedRole = response.data?.role || formData.role;
+
+      if (assignedRole === "VENDOR") {
+        navigate("/vendor-dashboard"); // or "/login" if vendors need manual approval
+      } else {
+        navigate("/customer-dashboard");
+      }
 
     } catch (error) {
-
       console.error(error);
 
       if (error.response) {
@@ -62,7 +69,6 @@ function Register() {
       } else {
         alert("Registration failed!");
       }
-
     }
   };
 

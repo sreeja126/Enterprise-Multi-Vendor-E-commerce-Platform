@@ -75,6 +75,10 @@ public class RazorpayPaymentService {
             throw new SecurityException("Incomplete payment verification data.");
         }
 
+        if (request.getAddressId() == null) {
+            throw new IllegalArgumentException("Please select a shipping address before checking out.");
+        }
+
         JSONObject attributes = new JSONObject();
         attributes.put("razorpay_order_id", request.getRazorpayOrderId());
         attributes.put("razorpay_payment_id", request.getRazorpayPaymentId());
@@ -87,8 +91,9 @@ public class RazorpayPaymentService {
         }
 
         // Signature is valid — genuinely paid via Razorpay. Now create the
-        // actual order (validates stock again, snapshots prices, reduces
-        // stock, clears cart) and record this real transaction ID.
-        return orderService.checkout(email, "RAZORPAY", request.getRazorpayPaymentId());
+        // actual order (validates stock again, snapshots prices and the
+        // chosen address, reduces stock, clears cart) and record this
+        // real transaction ID.
+        return orderService.checkout(email, request.getAddressId(), "RAZORPAY", request.getRazorpayPaymentId());
     }
 }

@@ -4,17 +4,15 @@ import { addProduct } from "../services/productService";
 import { getAllCategories } from "../services/Categoryservice";
 
 function AddProduct() {
-
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState([]);
-
   const [formData, setFormData] = useState({
     name: "",
     brand: "",
     description: "",
     price: "",
-    stock: "",
+    stockQuantity: "",
     categoryId: "",
     imageUrl: ""
   });
@@ -23,9 +21,16 @@ function AddProduct() {
     const loadCategories = async () => {
       try {
         const response = await getAllCategories();
-        setCategories(Array.isArray(response.data) ? response.data : []);
+
+        const categoryList = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+
+        setCategories(categoryList);
       } catch (error) {
-        console.error(error);
+        console.error("Failed to load categories:", error);
         setCategories([]);
       }
     };
@@ -44,35 +49,29 @@ function AddProduct() {
     e.preventDefault();
 
     try {
-
+      // Vendor is resolved server-side from the logged-in JWT — never sent
+      // from here. Only fields that exist on ProductRequestDTO go in this
+      // payload; anything else is silently dropped by the backend anyway.
       await addProduct({
         name: formData.name,
         brand: formData.brand,
         description: formData.description,
         price: Number(formData.price),
-        stock: Number(formData.stock),
-        // Category is a real relation on the backend (Category entity),
-        // so we send its id, not a free-text label.
-        category: formData.categoryId ? { id: Number(formData.categoryId) } : null,
-        // Backend stores a list of image urls under "images".
-        images: formData.imageUrl ? [formData.imageUrl] : []
+        stockQuantity: Number(formData.stockQuantity),
+        categoryId: formData.categoryId ? Number(formData.categoryId) : null,
+        imageUrl: formData.imageUrl,
       });
 
       navigate("/myproducts");
-
     } catch (error) {
-
-      console.error(error);
-      alert("Failed to add product.");
-
+      console.error("Failed to add product error details:", error.response?.data || error);
+      alert(`Failed to add product: ${error.response?.data || 'Check browser console for error details.'}`);
     }
   };
 
   return (
     <div className="min-h-screen bg-stone-50 flex items-center justify-center py-12 px-4">
-
       <div className="bg-white shadow-md border border-stone-100 rounded-2xl p-8 md:p-10 w-full max-w-2xl">
-
         <div className="mb-8 text-center">
           <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full mb-3">
             Vendor · New Listing
@@ -86,7 +85,6 @@ function AddProduct() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-
           <div>
             <label className="block mb-2 text-sm font-medium text-slate-700">
               Product Name
@@ -133,7 +131,6 @@ function AddProduct() {
           </div>
 
           <div className="grid grid-cols-2 gap-5">
-
             <div>
               <label className="block mb-2 text-sm font-medium text-slate-700">
                 Price (₹)
@@ -152,19 +149,18 @@ function AddProduct() {
 
             <div>
               <label className="block mb-2 text-sm font-medium text-slate-700">
-                Stock
+                Stock Quantity
               </label>
               <input
                 type="number"
-                name="stock"
+                name="stockQuantity"
                 min="0"
-                value={formData.stock}
+                value={formData.stockQuantity}
                 onChange={handleChange}
                 required
                 className="w-full border border-stone-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
               />
             </div>
-
           </div>
 
           <div>
@@ -207,10 +203,9 @@ function AddProduct() {
           </div>
 
           <div className="flex gap-4 pt-2">
-
             <button
               type="button"
-              onClick={() => navigate("/vendor/dashboard")}
+              onClick={() => navigate("/myproducts")}
               className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
             >
               Cancel
@@ -222,13 +217,9 @@ function AddProduct() {
             >
               Publish Product
             </button>
-
           </div>
-
         </form>
-
       </div>
-
     </div>
   );
 }

@@ -15,7 +15,7 @@ const MyProducts = () => {
 
   const fetchProducts = async () => {
     try {
-      const data = await productService.getAllProducts();
+      const data = await productService.getVendorProducts();
       setProducts(data);
 
       const initialStock = {};

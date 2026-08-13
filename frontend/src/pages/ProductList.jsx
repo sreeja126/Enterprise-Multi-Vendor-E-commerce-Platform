@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getAllProducts,
@@ -8,30 +8,74 @@ import {
 } from "../services/productService";
 import { getAllCategories } from "../services/Categoryservice";
 import { addToCart } from "../services/cartService";
+import { getWishlist, addToWishlist, removeFromWishlist } from "../services/wishlistService";
+
+// Helper to safely extract logged-in user context
+function getUserContext() {
+  let role = localStorage.getItem("role");
+  let userId = localStorage.getItem("userId") || localStorage.getItem("id");
+  let userEmail = localStorage.getItem("userEmail") || localStorage.getItem("email");
+
+  // Attempt JWT parsing if available
+  const token = localStorage.getItem("authToken") || localStorage.getItem("token");
+  if (token) {
+    try {
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(window.atob(base64));
+
+      role = payload.role || payload.roles?.[0] || role;
+      userId = payload.sub || payload.id || payload.userId || userId;
+      userEmail = payload.email || userEmail;
+    } catch (e) {
+      console.warn("Could not parse JWT token payload in ProductList", e);
+    }
+  }
+
+  return { role, userId, userEmail };
+}
 
 function ProductList() {
   const navigate = useNavigate();
 
-  const role = localStorage.getItem("role");
-  const isVendor = role === "VENDOR";
+  // 1. Get logged-in user details
+  const { role: currentUserRole, userId: currentUserId, userEmail: currentUserEmail } = useMemo(
+    () => getUserContext(),
+    []
+  );
 
+  const isVendor = String(currentUserRole).toUpperCase() === "VENDOR";
+
+  // 2. Component State
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [purchasingId, setPurchasingId] = useState(null);
+  const [wishlistIds, setWishlistIds] = useState(new Set());
+  const [wishlistBusyId, setWishlistBusyId] = useState(null);
 
   useEffect(() => {
     fetchProducts();
     fetchCategories();
-  }, []);
+
+    if (!isVendor) {
+      getWishlist()
+        .then((items) => {
+          if (Array.isArray(items)) {
+            setWishlistIds(new Set(items.map((item) => String(item.productId))));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isVendor]);
 
   const fetchProducts = async () => {
     try {
       const data = await getAllProducts();
       setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching products:", error);
       setProducts([]);
     }
   };
@@ -102,9 +146,6 @@ function ProductList() {
   const handlePurchase = async (id) => {
     setPurchasingId(id);
     try {
-      // "Buy Now" = add this one item to the cart, then go straight to
-      // checkout. This is the only path that actually creates a real
-      // Order/Payment — reduceStockOnOrder never did.
       await addToCart(id, 1);
       navigate("/checkout");
     } catch (error) {
@@ -119,6 +160,29 @@ function ProductList() {
       alert(`${product.name} added to cart!`);
     } catch (error) {
       alert(error.response?.data || "Failed to add to cart.");
+    }
+  };
+
+  const handleToggleWishlist = async (productId) => {
+    setWishlistBusyId(productId);
+    const isSaved = wishlistIds.has(String(productId));
+
+    try {
+      if (isSaved) {
+        await removeFromWishlist(productId);
+        setWishlistIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(productId));
+          return next;
+        });
+      } else {
+        await addToWishlist(productId);
+        setWishlistIds((prev) => new Set(prev).add(String(productId)));
+      }
+    } catch (error) {
+      alert(error.response?.data || "Failed to update wishlist.");
+    } finally {
+      setWishlistBusyId(null);
     }
   };
 
@@ -196,101 +260,152 @@ function ProductList() {
             {products.map((product) => {
               const id = product.id || product._id || product.productId;
 
+              const FALLBACK_IMAGE = "https://via.placeholder.com/400x250?text=No+Image";
               const imageSrc =
                 product.imageUrl ||
-                (product.images && product.images.length > 0 ? product.images[0] : null) ||
-                "https://via.placeholder.com/400x250?text=No+Image";
+                product.image ||
+                (product.images && product.images.length > 0 ? product.images[0] : FALLBACK_IMAGE);
 
               const stockVal = product.stock ?? product.stockQuantity ?? 0;
               const isOutOfStock = stockVal <= 0 || product.isOutOfStock;
               const hasDiscount = (product.discountPercentage ?? 0) > 0;
 
+              // ---------------------------------------------------------------------
+              // PRODUCT OWNERSHIP EVALUATION PER ITEM
+              // ---------------------------------------------------------------------
+              const productVendorId =
+                product.vendorId ||
+                product.vendor_id ||
+                product.vendor?.id ||
+                product.vendor?._id;
+
+              const productVendorEmail =
+                product.vendorEmail ||
+                product.vendor_email ||
+                product.vendor?.email;
+
+              const isIdMatch = Boolean(
+                currentUserId &&
+                productVendorId &&
+                String(currentUserId).trim() === String(productVendorId).trim()
+              );
+
+              const isEmailMatch = Boolean(
+                currentUserEmail &&
+                productVendorEmail &&
+                String(currentUserEmail).trim().toLowerCase() === String(productVendorEmail).trim().toLowerCase()
+              );
+
+              const isOwner = isVendor && (isIdMatch || isEmailMatch);
+
               return (
                 <div
                   key={id}
-                  className="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-xl transition-shadow duration-300"
+                  className="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between"
                 >
-                  <div className="relative">
-                    <img
-                      src={imageSrc}
-                      alt={product.name}
-                      className="w-full h-52 object-cover"
-                    />
-                    {hasDiscount && (
-                      <span className="absolute top-3 left-3 bg-rose-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-sm">
-                        {Math.round(product.discountPercentage)}% OFF
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-5">
-
-                    {(product.categoryName || product.category?.name) && (
-                      <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full mb-2">
-                        {product.categoryName || product.category?.name}
-                      </span>
-                    )}
-
-                    <h2 className="text-lg font-bold text-slate-900 leading-snug">
-                      {product.name}
-                    </h2>
-                    <p className="text-sm text-slate-500 mb-2">{product.brand}</p>
-
-                    <p className="text-slate-600 text-sm line-clamp-2 mb-3">
-                      {product.description}
-                    </p>
-
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        {hasDiscount ? (
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-slate-400 line-through text-sm">
-                              ₹{product.price}
-                            </span>
-                            <span className="text-xl font-bold text-amber-600">
-                              ₹{product.finalPrice}
-                            </span>
-                          </div>
-                        ) : (
-                          <p className="text-xl font-bold text-amber-600">
-                            ₹{product.price}
-                          </p>
-                        )}
-                      </div>
-
-                      {isOutOfStock ? (
-                        <span className="text-rose-600 text-xs font-semibold">
-                          Out of Stock
+                  <div>
+                    <div className="relative">
+                      <img
+                        src={imageSrc}
+                        alt={product.name}
+                        className="w-full h-52 object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = FALLBACK_IMAGE;
+                        }}
+                      />
+                      {hasDiscount && (
+                        <span className="absolute top-3 left-3 bg-rose-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-sm">
+                          {Math.round(product.discountPercentage)}% OFF
                         </span>
-                      ) : (
-                        <span className="text-emerald-600 text-xs font-semibold">
-                          {stockVal} in stock
-                        </span>
+                      )}
+                      {!isVendor && (
+                        <button
+                          onClick={() => handleToggleWishlist(id)}
+                          disabled={wishlistBusyId === id}
+                          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition bg-white/90 hover:bg-white text-xl ${
+                            wishlistIds.has(String(id))
+                              ? "text-rose-600"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}
+                          title={wishlistIds.has(String(id)) ? "Remove from wishlist" : "Add to wishlist"}
+                        >
+                          {wishlistIds.has(String(id)) ? "♥" : "♡"}
+                        </button>
                       )}
                     </div>
 
-                    {product.vendor && (
-                      <p className="text-xs text-slate-400 mb-4">
-                        Sold by <span className="font-medium text-slate-600">{product.vendor.name}</span>
+                    <div className="p-5">
+                      {(product.categoryName || product.category?.name) && (
+                        <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full mb-2">
+                          {product.categoryName || product.category?.name}
+                        </span>
+                      )}
+
+                      <h2 className="text-lg font-bold text-slate-900 leading-snug">
+                        {product.name}
+                      </h2>
+                      <p className="text-sm text-slate-500 mb-2">{product.brand}</p>
+
+                      <p className="text-slate-600 text-sm line-clamp-2 mb-3">
+                        {product.description}
                       </p>
-                    )}
 
-                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          {hasDiscount ? (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-slate-400 line-through text-sm">
+                                ₹{product.price}
+                              </span>
+                              <span className="text-xl font-bold text-amber-600">
+                                ₹{product.finalPrice}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-xl font-bold text-amber-600">
+                              ₹{product.price}
+                            </p>
+                          )}
+                        </div>
 
-                      <button
-                        onClick={() => {
-                          if (id) {
-                            navigate(`/products/${id}`);
-                          } else {
-                            console.error("Product ID is missing on product object:", product);
-                          }
-                        }}
-                        className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        View
-                      </button>
+                        {isOutOfStock ? (
+                          <span className="text-rose-600 text-xs font-semibold">
+                            Out of Stock
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 text-xs font-semibold">
+                            {stockVal} in stock
+                          </span>
+                        )}
+                      </div>
 
-                      {isVendor ? (
+                      {product.vendor && (
+                        <p className="text-xs text-slate-400 mb-4">
+                          Sold by <span className="font-medium text-slate-600">{product.vendor.name || product.vendor.username || product.vendor.email}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* BUTTON ACTION CONTAINER */}
+                  <div className="p-5 pt-0 flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        if (id) {
+                          navigate(`/products/${id}`);
+                        } else {
+                          console.error("Product ID is missing on product object:", product);
+                        }
+                      }}
+                      className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
+                    >
+                      View
+                    </button>
+
+                    {/* VENDOR PATH */}
+                    {isVendor && (
+                      isOwner ? (
                         <div className="flex gap-2">
                           <button
                             onClick={() => {
@@ -313,34 +428,40 @@ function ProductList() {
                           </button>
                         </div>
                       ) : (
-                        <div className="flex gap-2">
-                          <button
-                            disabled={isOutOfStock || purchasingId === id}
-                            onClick={() => handlePurchase(id)}
-                            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
-                              isOutOfStock
-                                ? "bg-stone-200 text-stone-400 cursor-not-allowed"
-                                : "bg-amber-500 hover:bg-amber-600 text-white"
-                            }`}
-                          >
-                            {purchasingId === id ? "Processing…" : isOutOfStock ? "Out of Stock" : "Buy Now"}
-                          </button>
-
-                          <button
-                            disabled={isOutOfStock}
-                            onClick={() => handleAddToCart(product)}
-                            className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
-                              isOutOfStock
-                                ? "border-stone-200 text-stone-400 cursor-not-allowed"
-                                : "border-stone-300 text-slate-700 hover:bg-stone-100"
-                            }`}
-                          >
-                            Add to Cart
-                          </button>
+                        <div className="w-full bg-stone-100 border border-stone-200 text-slate-500 text-xs text-center py-2 rounded-lg font-medium">
+                          🔒 Read-Only (Other Vendor)
                         </div>
-                      )}
+                      )
+                    )}
 
-                    </div>
+                    {/* SHOPPER PATH */}
+                    {!isVendor && (
+                      <div className="flex gap-2">
+                        <button
+                          disabled={isOutOfStock || purchasingId === id}
+                          onClick={() => handlePurchase(id)}
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                            isOutOfStock
+                              ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                              : "bg-amber-500 hover:bg-amber-600 text-white"
+                          }`}
+                        >
+                          {purchasingId === id ? "Processing…" : isOutOfStock ? "Out of Stock" : "Buy Now"}
+                        </button>
+
+                        <button
+                          disabled={isOutOfStock}
+                          onClick={() => handleAddToCart(product)}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
+                            isOutOfStock
+                              ? "border-stone-200 text-stone-400 cursor-not-allowed"
+                              : "border-stone-300 text-slate-700 hover:bg-stone-100"
+                          }`}
+                        >
+                          Add to Cart
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

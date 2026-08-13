@@ -43,6 +43,25 @@ public class ProductService {
                 .collect(Collectors.toList());
     }
 
+    // Only this vendor's own products — this is what the Inventory /
+    // My Products page must call, never getAllProducts().
+    @Transactional(readOnly = true)
+    public List<ProductResponseDTO> getMyProducts(String vendorEmail) {
+        if (vendorRepository == null) {
+            throw new RuntimeException("Vendor lookup is not configured on this server");
+        }
+
+        Vendor vendor = vendorRepository.findByEmail(vendorEmail)
+                .orElseThrow(() -> new RuntimeException(
+                        "No vendor profile found for this account."));
+
+        return productRepository.findByVendor(vendor)
+                .stream()
+                .filter(Objects::nonNull)
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public ProductResponseDTO getProductById(Long id) {
         Product product = productRepository.findById(id)
@@ -191,6 +210,7 @@ public class ProductService {
     // updateProduct never changes a product's owning vendor at all.
     private void mapDTOToProduct(ProductRequestDTO dto, Product product) {
         if (dto.getName() != null) product.setName(dto.getName());
+        if (dto.getBrand() != null) product.setBrand(dto.getBrand());
         if (dto.getDescription() != null) product.setDescription(dto.getDescription());
         if (dto.getPrice() != null) product.setPrice(dto.getPrice().doubleValue());
         if (dto.getStockQuantity() != null) product.setStockQuantity(dto.getStockQuantity());
