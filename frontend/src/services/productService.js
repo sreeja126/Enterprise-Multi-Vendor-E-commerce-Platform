@@ -1,6 +1,6 @@
 import api from './api';
 
-// 1. Get all products
+// 1. Get all products (Public Marketplace)
 export const getAllProducts = async () => {
   const response = await api.get('/products');
   return response.data;
@@ -69,7 +69,7 @@ export const updateProductDiscount = async (id, discountPercentage) => {
 };
 
 // Default export object containing all methods
-export const productService = {
+const productService = {
   getAllProducts,
   getProductById,
   searchProducts,

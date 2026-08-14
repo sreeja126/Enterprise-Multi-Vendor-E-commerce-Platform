@@ -16,7 +16,6 @@ function getUserContext() {
   let userId = localStorage.getItem("userId") || localStorage.getItem("id");
   let userEmail = localStorage.getItem("userEmail") || localStorage.getItem("email");
 
-  // Attempt JWT parsing if available
   const token = localStorage.getItem("authToken") || localStorage.getItem("token");
   if (token) {
     try {
@@ -59,6 +58,7 @@ function ProductList() {
     fetchProducts();
     fetchCategories();
 
+    // Fetch wishlist for customer
     if (!isVendor) {
       getWishlist()
         .then((items) => {
@@ -147,6 +147,10 @@ function ProductList() {
     setPurchasingId(id);
     try {
       await addToCart(id, 1);
+      
+      // Dispatch event to update cart badge in Navbar immediately
+      window.dispatchEvent(new Event("refreshCart"));
+
       navigate("/checkout");
     } catch (error) {
       alert(error.response?.data || "Failed to start checkout. Product may be out of stock.");
@@ -156,8 +160,13 @@ function ProductList() {
 
   const handleAddToCart = async (product) => {
     try {
-      await addToCart(product.id, 1);
-      alert(`${product.name} added to cart!`);
+      const productId = product.id || product._id || product.productId;
+      await addToCart(productId, 1);
+      
+      // Dispatch event to update cart badge in Navbar immediately
+      window.dispatchEvent(new Event("refreshCart"));
+
+    
     } catch (error) {
       alert(error.response?.data || "Failed to add to cart.");
     }
@@ -194,7 +203,7 @@ function ProductList() {
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-4xl font-serif font-bold text-slate-900">
-              {isVendor ? "Manage Products" : "Shop All Products"}
+              {isVendor ? "Manage & View Marketplace" : "Shop All Products"}
             </h1>
             <p className="text-slate-500 mt-1">
               {products.length} item{products.length !== 1 ? "s" : ""} available across all vendors
@@ -204,7 +213,7 @@ function ProductList() {
           {isVendor && (
             <button
               onClick={() => navigate("/addproduct")}
-              className="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-3 rounded-lg font-semibold transition shadow-sm whitespace-nowrap"
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-3 rounded-lg font-semibold transition shadow-sm whitespace-nowrap cursor-pointer"
             >
               + Add Product
             </button>
@@ -213,7 +222,6 @@ function ProductList() {
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col md:flex-row gap-4 mb-8 bg-white p-4 rounded-xl border border-stone-100 shadow-sm">
-
           <input
             type="text"
             placeholder="Search products…"
@@ -224,7 +232,7 @@ function ProductList() {
 
           <button
             onClick={handleSearch}
-            className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-lg font-medium transition"
+            className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-lg font-medium transition cursor-pointer"
           >
             Search
           </button>
@@ -244,11 +252,10 @@ function ProductList() {
 
           <button
             onClick={handleCategoryFilter}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-lg font-medium transition"
+            className="bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-lg font-medium transition cursor-pointer"
           >
             Filter
           </button>
-
         </div>
 
         {!Array.isArray(products) || products.length === 0 ? (
@@ -270,9 +277,7 @@ function ProductList() {
               const isOutOfStock = stockVal <= 0 || product.isOutOfStock;
               const hasDiscount = (product.discountPercentage ?? 0) > 0;
 
-              // ---------------------------------------------------------------------
-              // PRODUCT OWNERSHIP EVALUATION PER ITEM
-              // ---------------------------------------------------------------------
+              // Product Ownership Evaluation
               const productVendorId =
                 product.vendorId ||
                 product.vendor_id ||
@@ -319,11 +324,13 @@ function ProductList() {
                           {Math.round(product.discountPercentage)}% OFF
                         </span>
                       )}
+
+                      {/* Wishlist Button - Only visible to non-vendors/customers */}
                       {!isVendor && (
                         <button
                           onClick={() => handleToggleWishlist(id)}
                           disabled={wishlistBusyId === id}
-                          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition bg-white/90 hover:bg-white text-xl ${
+                          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition bg-white/90 hover:bg-white text-xl cursor-pointer ${
                             wishlistIds.has(String(id))
                               ? "text-rose-600"
                               : "text-slate-500 hover:text-slate-700"
@@ -382,65 +389,52 @@ function ProductList() {
 
                       {product.vendor && (
                         <p className="text-xs text-slate-400 mb-4">
-                          Sold by <span className="font-medium text-slate-600">{product.vendor.name || product.vendor.username || product.vendor.email}</span>
+                          Sold by{" "}
+                          <span className="font-medium text-slate-600">
+                            {product.vendor.name || product.vendor.username || product.vendor.email}
+                          </span>
+                          {isOwner && <span className="text-emerald-600 font-bold ml-1">(Your Product)</span>}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  {/* BUTTON ACTION CONTAINER */}
+                  {/* BUTTON ACTIONS */}
                   <div className="p-5 pt-0 flex flex-col gap-2">
+                    {/* View Details - Visible to everyone */}
                     <button
-                      onClick={() => {
-                        if (id) {
-                          navigate(`/products/${id}`);
-                        } else {
-                          console.error("Product ID is missing on product object:", product);
-                        }
-                      }}
-                      className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition"
+                      onClick={() => navigate(`/products/${id}`)}
+                      className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition cursor-pointer"
                     >
-                      View
+                      View Details
                     </button>
 
-                    {/* VENDOR PATH */}
-                    {isVendor && (
-                      isOwner ? (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              if (id) {
-                                navigate(`/products/edit/${id}`);
-                              } else {
-                                console.error("Missing product ID:", product);
-                              }
-                            }}
-                            className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition"
-                          >
-                            Edit
-                          </button>
+                    {/* VENDOR ACTIONS - Only on their own products */}
+                    {isOwner && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => navigate(`/products/edit/${id}`)}
+                          className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                        >
+                          Edit
+                        </button>
 
-                          <button
-                            onClick={() => handleDelete(id)}
-                            className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-full bg-stone-100 border border-stone-200 text-slate-500 text-xs text-center py-2 rounded-lg font-medium">
-                          🔒 Read-Only (Other Vendor)
-                        </div>
-                      )
+                        <button
+                          onClick={() => handleDelete(id)}
+                          className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     )}
 
-                    {/* SHOPPER PATH */}
+                    {/* CUSTOMER ACTIONS - "Buy Now" & "Add to Cart" strictly for non-vendors/customers */}
                     {!isVendor && (
                       <div className="flex gap-2">
                         <button
                           disabled={isOutOfStock || purchasingId === id}
                           onClick={() => handlePurchase(id)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
                             isOutOfStock
                               ? "bg-stone-200 text-stone-400 cursor-not-allowed"
                               : "bg-amber-500 hover:bg-amber-600 text-white"
@@ -452,7 +446,7 @@ function ProductList() {
                         <button
                           disabled={isOutOfStock}
                           onClick={() => handleAddToCart(product)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition ${
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition cursor-pointer ${
                             isOutOfStock
                               ? "border-stone-200 text-stone-400 cursor-not-allowed"
                               : "border-stone-300 text-slate-700 hover:bg-stone-100"

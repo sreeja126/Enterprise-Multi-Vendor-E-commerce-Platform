@@ -1,0 +1,19 @@
+package shopstack_backend.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import shopstack_backend.entity.OrderItem;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+
+    // Every item across every order that belongs to this vendor's products —
+    // this is the vendor-isolation boundary: a vendor only ever sees their
+    // own line items, never another vendor's items even within the same order.
+    List<OrderItem> findByProduct_Vendor_User_EmailOrderByOrder_CreatedAtDesc(String email);
+
+    // Ownership check for a status update: this item must both exist AND
+    // belong to a product owned by this vendor.
+    Optional<OrderItem> findByIdAndProduct_Vendor_User_Email(Long id, String email);
+}

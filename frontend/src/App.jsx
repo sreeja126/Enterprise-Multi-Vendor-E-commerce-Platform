@@ -14,38 +14,51 @@ import CustomerDashboard from "./pages/CustomerDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Cart from "./pages/Cart";
-import Checkout from "./pages/Checkout";
+import Checkout from "./pages/CheckOut";
 import OrderHistory from "./pages/OrderHistory";
 import OrderDetails from "./pages/OrderDetails";
 import Wishlist from "./pages/Wishlist";
+import VendorOrders from "./pages/VendorOrders";
 
 function App() {
-    return (
-        <BrowserRouter>
-            <Navbar />
-            <Routes>
-               <Route path="/" element={<Navigate to="/login" replace />} />
-               <Route path="/vendor-dashboard" element={<VendorDashboard />} />
-               <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route   path="/profile"   element={<Profile />} />
-               <Route  path="/editprofile" element={<EditProfile />} />
-               <Route path="/addproduct" element={<AddProduct />} />
-               <Route path="/products" element={<ProductList />} />
-               <Route path="/products/:id" element={<ProductDetails />} />
-               <Route path="/products/edit/:id" element={<EditProduct />} />
-               <Route path="/myproducts" element={<MyProducts />}/>
-               <Route path="/forgot-password" element={<ForgotPassword />} />
-               <Route path="/reset-password" element={<ResetPassword />} />
-               <Route path="/cart" element={<Cart />} />
-               <Route path="/checkout" element={<Checkout />} />
-<Route path="/orders" element={<OrderHistory />} />
-<Route path="/orders/:id" element={<OrderDetails />} />
-   <Route path="/wishlist" element={<Wishlist />} />
-            </Routes>
-        </BrowserRouter>
-    );
+  return (
+    <BrowserRouter>
+      <Navbar />
+      <Routes>
+        {/* Default Landing Page Redirect */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        {/* Dashboards */}
+        <Route path="/vendor-dashboard" element={<VendorDashboard />} />
+        <Route path="/customer-dashboard" element={<CustomerDashboard />} />
+
+        {/* Authentication Routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Profile Management */}
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/editprofile" element={<EditProfile />} />
+
+        {/* Product & Catalog Routes */}
+        <Route path="/products" element={<ProductList />} />
+        <Route path="/products/:id" element={<ProductDetails />} />
+        <Route path="/addproduct" element={<AddProduct />} />
+        <Route path="/products/edit/:id" element={<EditProduct />} />
+        <Route path="/myproducts" element={<MyProducts />} />
+
+        {/* Shopping & Order Routes */}
+        <Route path="/cart" element={<Cart />} />
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/orders" element={<OrderHistory />} />
+        <Route path="/orders/:id" element={<OrderDetails />} />
+        <Route path="/vendor-orders" element={<VendorOrders />} />
+        <Route path="/wishlist" element={<Wishlist />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 export default App;
