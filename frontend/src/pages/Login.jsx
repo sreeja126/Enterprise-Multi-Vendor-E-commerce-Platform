@@ -6,13 +6,15 @@ import Button from "../components/Button";
 import { loginUser } from "../services/authService";
 
 function Login() {
-
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
+
+  const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -23,6 +25,8 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
+    setLoading(true);
 
     try {
       const response = await loginUser({
@@ -30,94 +34,124 @@ function Login() {
         password: formData.password,
       });
 
-      localStorage.setItem("token", response.data.token);
-      localStorage.setItem("role", response.data.role);
+      // Handle cases where the response wrapper is nested (Axios data property vs custom payload)
+      const data = response.data?.data || response.data;
 
-      if (response.data.role === "VENDOR") {
+      // 1. Verify token exists before updating auth state
+      if (!data || !data.token) {
+        setErrorMessage(data?.message || "Invalid credentials. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Save valid credentials to storage
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("role", data.role);
+
+      // 3. Dispatch storage event so Navbar updates instantly
+      window.dispatchEvent(new Event("storage"));
+
+      // 4. Navigate based on role
+      if (data.role === "VENDOR") {
         navigate("/vendor-dashboard");
-      } else if (response.data.role === "CUSTOMER") {
+      } else if (data.role === "CUSTOMER") {
         navigate("/customer-dashboard");
       } else {
-        // Covers ADMINISTRATOR / WAREHOUSE_STAFF or any future role that
-        // doesn't have a dedicated dashboard yet — send them somewhere
-        // safe instead of silently doing nothing.
-        navigate("/login");
+        navigate("/");
       }
 
     } catch (error) {
-
-      console.error(error);
+      console.error("Login error:", error);
 
       if (error.response) {
-        alert(error.response.data.message || "Login Failed");
+        setErrorMessage(error.response.data?.message || "Login Failed. Please check your credentials.");
       } else {
-        alert("Unable to connect to server.");
+        setErrorMessage("Unable to connect to the server. Please check your network connection.");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <AuthLayout
       title="Welcome Back 👋"
-      subtitle="Login to continue shopping with ShopStack."
+      subtitle="Sign in to your account to continue shopping with ShopStack."
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="bg-white/90 backdrop-blur-md border border-stone-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-5">
 
-        <InputField
-          label="Email"
-          type="email"
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          placeholder="Enter your email"
-          required
-        />
+          {/* Inline error banner */}
+          {errorMessage && (
+            <div className="bg-rose-50 border border-rose-200/80 text-rose-700 text-sm px-4 py-3 rounded-xl flex items-center gap-2 font-medium">
+              <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-        <InputField
-          label="Password"
-          type="password"
-          name="password"
-          value={formData.password}
-          onChange={handleChange}
-          placeholder="Enter your password"
-          required
-        />
+          <InputField
+            label="Email Address"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="you@example.com"
+            required
+          />
 
-        <div className="flex items-center justify-between text-sm">
+          <InputField
+            label="Password"
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="••••••••"
+            required
+          />
 
-          <label className="flex items-center gap-2 text-slate-600">
-            <input
-              type="checkbox"
-              className="rounded border-slate-300"
-            />
-            Remember me
-          </label>
+          {/* Remember me & Forgot password */}
+          <div className="flex items-center justify-between text-sm pt-1">
+            <label className="flex items-center gap-2 text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-stone-300 text-emerald-700 focus:ring-emerald-600 h-4 w-4 transition cursor-pointer"
+              />
+              <span className="font-medium text-slate-700">Remember me</span>
+            </label>
 
-          <div className="text-right mb-4">
-    <Link
-    to="/forgot-password"
-    className="text-blue-600 hover:underline text-sm" >
-    Forgot Password?
-  </Link>
-</div>
+            <Link
+              to="/forgot-password"
+              className="font-medium text-emerald-700 hover:text-emerald-800 transition"
+            >
+              Forgot password?
+            </Link>
+          </div>
 
-        </div>
-
-        <Button type="submit">
-          Login
-        </Button>
-
-        <p className="text-center text-sm text-slate-600">
-          Don't have an account?{" "}
-          <Link
-            to="/register"
-            className="font-semibold text-blue-600 hover:text-blue-700"
+          <Button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl transition shadow-sm cursor-pointer disabled:opacity-50"
           >
-            Register
-          </Link>
-        </p>
+            {loading ? "Signing in..." : "Sign In"}
+          </Button>
 
-      </form>
+          {/* Registration link footer */}
+          <div className="pt-2 text-center border-t border-stone-100">
+            <p className="text-sm text-slate-600">
+              Don't have an account?{" "}
+              <Link
+                to="/register"
+                className="font-semibold text-emerald-700 hover:text-emerald-800 transition"
+              >
+                Create an account
+              </Link>
+            </p>
+          </div>
+
+        </form>
+      </div>
     </AuthLayout>
   );
 }

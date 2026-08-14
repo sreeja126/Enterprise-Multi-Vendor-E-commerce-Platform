@@ -33,6 +33,10 @@ public class OrderItem {
     @Column(nullable = false)
     private Double lineTotal;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private OrderStatus status = OrderStatus.CONFIRMED;
+
     public OrderItem() {}
 
     public Long getId() {
@@ -89,5 +93,13 @@ public class OrderItem {
 
     public void setLineTotal(Double lineTotal) {
         this.lineTotal = lineTotal;
+    }
+
+    public OrderStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(OrderStatus status) {
+        this.status = status;
     }
 }

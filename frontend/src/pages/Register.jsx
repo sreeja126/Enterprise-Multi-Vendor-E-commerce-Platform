@@ -16,6 +16,9 @@ function Register() {
     role: "CUSTOMER",
   });
 
+  const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -23,13 +26,23 @@ function Register() {
     });
   };
 
+  const handleRoleSelect = (selectedRole) => {
+    setFormData({
+      ...formData,
+      role: selectedRole,
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
 
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
+      setErrorMessage("Passwords do not match!");
       return;
     }
+
+    setLoading(true);
 
     try {
       const response = await registerUser({
@@ -39,116 +52,157 @@ function Register() {
         role: formData.role,
       });
 
-      alert(response.data?.message || response.data || "Registration successful!");
+      const data = response.data?.data || response.data;
 
-      // Clean up state
-      setFormData({
-        fullName: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        role: "CUSTOMER",
-      });
+      // 1. Save credentials so Navbar updates state immediately
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+      }
+      
+      const assignedRole = data?.role || formData.role;
+      localStorage.setItem("role", assignedRole);
 
-      // -------------------------------------------------------------
-      // Dynamic Redirection based on selected role
-      // -------------------------------------------------------------
-      const assignedRole = response.data?.role || formData.role;
+      // 2. Dispatch event so Navbar hears the token change
+      window.dispatchEvent(new Event("storage"));
 
+      // 3. Direct navigation to dashboard based on role
       if (assignedRole === "VENDOR") {
-        navigate("/vendor-dashboard"); // or "/login" if vendors need manual approval
+        navigate("/vendor-dashboard");
       } else {
         navigate("/customer-dashboard");
       }
 
     } catch (error) {
-      console.error(error);
+      console.error("Registration error:", error);
 
       if (error.response) {
-        alert(error.response.data);
+        const msg = typeof error.response.data === "string" 
+          ? error.response.data 
+          : error.response.data?.message || "Registration failed!";
+        setErrorMessage(msg);
       } else {
-        alert("Registration failed!");
+        setErrorMessage("Unable to connect to the server. Please check your connection.");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <AuthLayout
       title="Create Account 🚀"
-      subtitle="Join ShopStack as a Customer or Vendor."
+      subtitle="Join ShopStack today as a Customer or Vendor."
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-white/90 backdrop-blur-md border border-stone-200/80 rounded-2xl p-6 sm:p-8 shadow-sm">
+        <form onSubmit={handleSubmit} className="space-y-4">
 
-        <InputField
-          label="Full Name"
-          name="fullName"
-          value={formData.fullName}
-          onChange={handleChange}
-          placeholder="Enter your full name"
-          required
-        />
+          {/* Inline error message banner */}
+          {errorMessage && (
+            <div className="bg-rose-50 border border-rose-200/80 text-rose-700 text-sm px-4 py-3 rounded-xl flex items-center gap-2 font-medium">
+              <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-        <InputField
-          label="Email"
-          type="email"
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          placeholder="Enter your email"
-          required
-        />
-
-        <InputField
-          label="Password"
-          type="password"
-          name="password"
-          value={formData.password}
-          onChange={handleChange}
-          placeholder="Create a password"
-          required
-        />
-
-        <InputField
-          label="Confirm Password"
-          type="password"
-          name="confirmPassword"
-          value={formData.confirmPassword}
-          onChange={handleChange}
-          placeholder="Confirm your password"
-          required
-        />
-
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">
-            Register As
-          </label>
-
-          <select
-            name="role"
-            value={formData.role}
+          <InputField
+            label="Full Name"
+            name="fullName"
+            value={formData.fullName}
             onChange={handleChange}
-            className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="CUSTOMER">Customer</option>
-            <option value="VENDOR">Vendor</option>
-          </select>
-        </div>
+           
+            required
+          />
 
-        <Button type="submit">
-          Create Account
-        </Button>
+          <InputField
+            label="Email Address"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            
+            required
+          />
 
-        <p className="text-center text-sm text-slate-600">
-          Already have an account?{" "}
-          <Link
-            to="/login"
-            className="font-semibold text-blue-600 hover:text-blue-700"
-          >
-            Login
-          </Link>
-        </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputField
+              label="Password"
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+            
+              required
+            />
 
-      </form>
+            <InputField
+              label="Confirm Password"
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+             
+              required
+            />
+          </div>
+
+          {/* Styled Segment Selector for Role */}
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              I want to register as
+            </label>
+            <div className="grid grid-cols-2 gap-2 p-1.5 bg-stone-100 rounded-xl border border-stone-200">
+              <button
+                type="button"
+                onClick={() => handleRoleSelect("CUSTOMER")}
+                className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+                  formData.role === "CUSTOMER"
+                    ? "bg-white text-slate-900 shadow-xs border border-stone-200"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🛍️ Customer
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleSelect("VENDOR")}
+                className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+                  formData.role === "VENDOR"
+                    ? "bg-white text-slate-900 shadow-xs border border-stone-200"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                🏪 Vendor
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <Button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl transition shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              {loading ? "Creating Account..." : "Create Account"}
+            </Button>
+          </div>
+
+          {/* Footer Navigation Link */}
+          <div className="pt-3 text-center border-t border-stone-100">
+            <p className="text-sm text-slate-600">
+              Already have an account?{" "}
+              <Link
+                to="/login"
+                className="font-semibold text-emerald-700 hover:text-emerald-800 transition"
+              >
+                Sign In
+              </Link>
+            </p>
+          </div>
+
+        </form>
+      </div>
     </AuthLayout>
   );
 }

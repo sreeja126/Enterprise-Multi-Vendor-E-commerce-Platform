@@ -7,6 +7,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import shopstack_backend.dto.OrderResponseDTO;
+import shopstack_backend.dto.UpdateOrderItemStatusRequest;
+import shopstack_backend.dto.VendorOrderItemResponseDTO;
 import shopstack_backend.service.OrderService;
 
 import java.util.List;
@@ -46,6 +48,30 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
+    // ---- Vendor order fulfillment ----
+
+    // Only the logged-in vendor's own line items, across every order —
+    // never another vendor's items, even from a shared order.
+    @GetMapping("/orders/vendor/items")
+    public ResponseEntity<List<VendorOrderItemResponseDTO>> getVendorOrderItems(Authentication authentication) {
+        return ResponseEntity.ok(orderService.getVendorOrderItems(authentication.getName()));
+    }
+
+    @PutMapping("/orders/items/{itemId}/status")
+    public ResponseEntity<?> updateItemStatus(@PathVariable Long itemId,
+                                               Authentication authentication,
+                                               @RequestBody UpdateOrderItemStatusRequest request) {
+        try {
+            VendorOrderItemResponseDTO updated =
+                    orderService.updateItemStatus(authentication.getName(), itemId, request.getStatus());
+            return ResponseEntity.ok(updated);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 }

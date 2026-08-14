@@ -6,6 +6,7 @@ import java.util.List;
 public class OrderResponseDTO {
 
     private Long id;
+    private Integer customerOrderNumber;
     private String status;
     private Double totalAmount;
     private LocalDateTime createdAt;
@@ -30,6 +31,14 @@ public class OrderResponseDTO {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Integer getCustomerOrderNumber() {
+        return customerOrderNumber;
+    }
+
+    public void setCustomerOrderNumber(Integer customerOrderNumber) {
+        this.customerOrderNumber = customerOrderNumber;
     }
 
     public String getStatus() {

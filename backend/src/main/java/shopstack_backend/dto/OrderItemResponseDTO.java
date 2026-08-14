@@ -2,13 +2,23 @@ package shopstack_backend.dto;
 
 public class OrderItemResponseDTO {
 
+    private Long id;
     private Long productId;
     private String productName;
     private Double priceAtPurchase;
     private Integer quantity;
     private Double lineTotal;
+    private String status;
 
     public OrderItemResponseDTO() {}
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public Long getProductId() {
         return productId;
@@ -48,5 +58,13 @@ public class OrderItemResponseDTO {
 
     public void setLineTotal(Double lineTotal) {
         this.lineTotal = lineTotal;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

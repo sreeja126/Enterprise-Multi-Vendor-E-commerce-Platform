@@ -16,10 +16,25 @@ function Cart() {
     fetchCart();
   }, []);
 
+  // Helper to notify Navbar asynchronously without breaking React's render loop
+  const notifyCartUpdated = (data) => {
+    const count =
+      data?.totalItems ??
+      data?.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) ??
+      0;
+
+    // Defer execution so it runs AFTER React finishes the current render pass
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+      window.dispatchEvent(new Event("refreshCart"));
+    }, 0);
+  };
+
   const fetchCart = async () => {
     try {
       const data = await getCart();
       setCart(data);
+      notifyCartUpdated(data);
     } catch (err) {
       console.error("Failed to load cart", err);
     } finally {
@@ -27,31 +42,78 @@ function Cart() {
     }
   };
 
-  const handleQuantityChange = async (itemId, newQuantity) => {
-    if (newQuantity < 1) return;
+  const getItemId = (item) => {
+    return item?.id || item?._id || item?.cartItemId || item?.productId;
+  };
+
+  const handleQuantityChange = async (targetItem, newQuantity) => {
+    const itemId = getItemId(targetItem);
+    if (!itemId || newQuantity < 1) return;
 
     setUpdatingId(itemId);
+    const previousCart = cart;
+
+    // 1. Optimistic Update
+    setCart((prevCart) => {
+      if (!prevCart) return prevCart;
+      const updatedItems = (prevCart.items || []).map((item) => {
+        if (getItemId(item) === itemId) {
+          const unitPrice = item.finalPrice ?? item.price ?? 0;
+          return {
+            ...item,
+            quantity: newQuantity,
+            lineTotal: unitPrice * newQuantity,
+          };
+        }
+        return item;
+      });
+
+      const totalItems = updatedItems.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+      const totalAmount = updatedItems.reduce((acc, curr) => {
+        return acc + (curr.lineTotal ?? ((curr.finalPrice ?? curr.price ?? 0) * curr.quantity));
+      }, 0);
+
+      const updatedCart = { ...prevCart, items: updatedItems, totalItems, totalAmount };
+      notifyCartUpdated(updatedCart);
+      return updatedCart;
+    });
+
     try {
+      // 2. Server API call
       const updated = await updateCartItem(itemId, newQuantity);
-      setCart(updated);
+      if (updated && updated.items) {
+        setCart(updated);
+        notifyCartUpdated(updated);
+      }
     } catch (err) {
-      alert(err.response?.data || "Failed to update quantity.");
+      console.error("Failed to update item quantity:", err);
+      setCart(previousCart);
+      notifyCartUpdated(previousCart);
+      alert(err.response?.data?.message || err.response?.data || "Failed to update quantity.");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const handleRemove = async (itemId) => {
-    setUpdatingId(itemId);
-    try {
-      const updated = await removeCartItem(itemId);
-      setCart(updated);
-    } catch (err) {
-      alert(err.response?.data || "Failed to remove item.");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
+ const handleRemove = async (targetItem) => {
+     const itemId = getItemId(targetItem);
+     if (!itemId) return;
+
+     setUpdatingId(itemId);
+     const previousCart = cart;
+
+     try {
+       const updated = await removeCartItem(itemId);
+       setCart(updated);
+       notifyCartUpdated(updated);
+     } catch (err) {
+       console.error("Failed to remove item:", err);
+       setCart(previousCart);
+       alert(err.response?.data?.message || err.response?.data || "Failed to remove item.");
+     } finally {
+       setUpdatingId(null);
+     }
+   };
 
   if (loading) {
     return (
@@ -66,7 +128,6 @@ function Cart() {
   return (
     <div className="min-h-screen bg-stone-50 p-6 md:p-8">
       <div className="max-w-5xl mx-auto">
-
         <h1 className="text-4xl font-serif font-bold text-slate-900 mb-8">
           My Cart
         </h1>
@@ -81,22 +142,23 @@ function Cart() {
             </p>
             <button
               onClick={() => navigate("/products")}
-              className="mt-6 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-lg font-semibold transition"
+              className="mt-6 bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-lg font-semibold transition cursor-pointer"
             >
               Browse Products
             </button>
           </div>
         ) : (
           <div className="grid lg:grid-cols-3 gap-8">
-
             {/* Items */}
             <div className="lg:col-span-2 space-y-4">
-              {items.map((item) => {
+              {items.map((item, index) => {
+                const itemId = getItemId(item);
+                const key = itemId || `cart-item-${index}`;
                 const hasDiscount = (item.discountPercentage ?? 0) > 0;
 
                 return (
                   <div
-                    key={item.id}
+                    key={key}
                     className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 flex gap-4 items-center"
                   >
                     <img
@@ -121,7 +183,7 @@ function Cart() {
                           </span>
                         )}
                         <span className="text-amber-600 font-semibold">
-                          ₹{item.finalPrice}
+                          ₹{item.finalPrice ?? item.price}
                         </span>
                         {hasDiscount && (
                           <span className="bg-rose-50 text-rose-600 text-xs font-bold px-1.5 py-0.5 rounded">
@@ -130,7 +192,7 @@ function Cart() {
                         )}
                       </div>
 
-                      {item.quantity >= item.availableStock && (
+                      {item.availableStock && item.quantity >= item.availableStock && (
                         <p className="text-xs text-orange-500 mt-1">
                           Max available: {item.availableStock}
                         </p>
@@ -139,9 +201,9 @@ function Cart() {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                        disabled={updatingId === item.id || item.quantity <= 1}
-                        className="w-8 h-8 rounded-lg border border-stone-300 text-slate-600 hover:bg-stone-100 disabled:opacity-40 transition"
+                        onClick={() => handleQuantityChange(item, item.quantity - 1)}
+                        disabled={updatingId === itemId || item.quantity <= 1}
+                        className="w-8 h-8 rounded-lg border border-stone-300 text-slate-600 hover:bg-stone-100 disabled:opacity-40 transition cursor-pointer"
                       >
                         −
                       </button>
@@ -149,61 +211,65 @@ function Cart() {
                         {item.quantity}
                       </span>
                       <button
-                        onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                        disabled={updatingId === item.id || item.quantity >= item.availableStock}
-                        className="w-8 h-8 rounded-lg border border-stone-300 text-slate-600 hover:bg-stone-100 disabled:opacity-40 transition"
+                        onClick={() => handleQuantityChange(item, item.quantity + 1)}
+                        disabled={
+                          updatingId === itemId ||
+                          (item.availableStock && item.quantity >= item.availableStock)
+                        }
+                        className="w-8 h-8 rounded-lg border border-stone-300 text-slate-600 hover:bg-stone-100 disabled:opacity-40 transition cursor-pointer"
                       >
                         +
                       </button>
                     </div>
 
                     <div className="text-right w-24">
-                      <p className="font-bold text-slate-900">₹{item.lineTotal}</p>
+                      <p className="font-bold text-slate-900">
+                        ₹{item.lineTotal ?? ((item.finalPrice || item.price) * item.quantity)}
+                      </p>
                     </div>
 
                     <button
-                      onClick={() => handleRemove(item.id)}
-                      disabled={updatingId === item.id}
-                      className="text-rose-500 hover:text-rose-700 text-sm font-medium transition"
+                      onClick={() => handleRemove(item)}
+                      disabled={updatingId === itemId}
+                      className="text-rose-500 hover:text-rose-700 text-sm font-medium transition cursor-pointer disabled:opacity-50"
                     >
-                      Remove
+                      {updatingId === itemId ? "Removing..." : "Remove"}
                     </button>
                   </div>
                 );
               })}
             </div>
 
-            {/* Summary */}
+            {/* Order Summary */}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-6 h-fit">
               <h2 className="text-lg font-bold text-slate-900 mb-4">
                 Order Summary
               </h2>
 
               <div className="flex justify-between text-slate-600 mb-2">
-                <span>Items ({cart.totalItems})</span>
-                <span>₹{cart.totalAmount}</span>
+                <span>Items ({cart?.totalItems ?? items.reduce((a, b) => a + (b.quantity || 1), 0)})</span>
+                <span>₹{cart?.totalAmount ?? 0}</span>
               </div>
 
               <div className="flex justify-between text-xl font-bold text-slate-900 border-t border-stone-100 pt-4 mt-4">
                 <span>Total</span>
-                <span>₹{cart.totalAmount}</span>
+                <span>₹{cart?.totalAmount ?? 0}</span>
               </div>
 
               <button
                 onClick={() => navigate("/checkout")}
-                className="w-full mt-6 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition"
+                className="w-full mt-6 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-lg font-semibold transition cursor-pointer"
               >
                 Proceed to Checkout
               </button>
 
               <button
                 onClick={() => navigate("/products")}
-                className="w-full mt-3 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition"
+                className="w-full mt-3 border border-stone-300 text-slate-700 hover:bg-stone-100 py-3 rounded-lg font-medium transition cursor-pointer"
               >
                 Continue Shopping
               </button>
             </div>
-
           </div>
         )}
       </div>

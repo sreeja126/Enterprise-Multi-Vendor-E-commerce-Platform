@@ -17,10 +17,26 @@ export const getOrderById = async (id) => {
   return response.data;
 };
 
+// ---- Vendor order fulfillment ----
+
+// Only this vendor's own line items across every order — never another
+// vendor's items, even from a shared order.
+export const getVendorOrderItems = async () => {
+  const response = await api.get('/orders/vendor/items');
+  return response.data;
+};
+
+export const updateOrderItemStatus = async (itemId, status) => {
+  const response = await api.put(`/orders/items/${itemId}/status`, { status });
+  return response.data;
+};
+
 const orderService = {
   checkout,
   getOrderHistory,
   getOrderById,
+  getVendorOrderItems,
+  updateOrderItemStatus,
 };
 
 export default orderService;
