@@ -162,11 +162,190 @@ public class OrderService {
         return checkout(email, defaultAddress.getId(), "SIMULATED", "TXN-" + UUID.randomUUID());
     }
 
+    // Cash on Delivery — a real order gets created just like an online
+    // payment does (stock reduced, cart cleared, address snapshotted), but
+    // the Payment record is PENDING instead of SUCCESS, since no money has
+    // actually changed hands yet.
+    @Transactional
+    public OrderResponseDTO placeCodOrder(String email, Long addressId) {
+        return checkoutWithStatus(email, addressId, "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING);
+    }
+
+    // Internal variant of checkout() that lets the caller specify the
+    // Payment's status explicitly (SUCCESS for Razorpay, PENDING for COD).
+    private OrderResponseDTO checkoutWithStatus(String email, Long addressId, String paymentMethod,
+                                                 String transactionId, PaymentStatus paymentStatus) {
+
+        Cart cart = cartRepository.findByUserEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Your cart is empty."));
+
+        if (cart.getItems() == null || cart.getItems().isEmpty()) {
+            throw new IllegalStateException("Your cart is empty.");
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Address address = addressRepository.findByIdAndUserEmail(addressId, email)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Please select a valid shipping address before checking out."));
+
+        for (CartItem cartItem : cart.getItems()) {
+            Product product = cartItem.getProduct();
+            int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            if (available < cartItem.getQuantity()) {
+                throw new IllegalStateException(
+                        "\"" + product.getName() + "\" only has " + available + " unit(s) left. " +
+                        "Please update your cart before checking out.");
+            }
+        }
+
+        Order order = new Order();
+        order.setUser(user);
+        order.setStatus(OrderStatus.PENDING);
+
+        order.setShippingFullName(address.getFullName());
+        order.setShippingPhone(address.getPhone());
+        order.setShippingAddressLine1(address.getAddressLine1());
+        order.setShippingAddressLine2(address.getAddressLine2());
+        order.setShippingCity(address.getCity());
+        order.setShippingState(address.getState());
+        order.setShippingPostalCode(address.getPostalCode());
+        order.setShippingCountry(address.getCountry());
+
+        List<OrderItem> orderItems = new ArrayList<>();
+        double total = 0;
+
+        for (CartItem cartItem : cart.getItems()) {
+            Product product = cartItem.getProduct();
+
+            double finalPrice = product.getFinalPrice();
+            double lineTotal = Math.round(finalPrice * cartItem.getQuantity() * 100.0) / 100.0;
+
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(product);
+            orderItem.setProductName(product.getName());
+            orderItem.setPriceAtPurchase(finalPrice);
+            orderItem.setQuantity(cartItem.getQuantity());
+            orderItem.setLineTotal(lineTotal);
+            orderItem.setStatus(OrderStatus.CONFIRMED);
+            orderItems.add(orderItem);
+
+            total += lineTotal;
+
+            product.setStockQuantity(available(product) - cartItem.getQuantity());
+            productRepository.save(product);
+        }
+
+        order.setItems(orderItems);
+        order.setTotalAmount(Math.round(total * 100.0) / 100.0);
+
+        Order saved = orderRepository.save(order);
+
+        Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
+
+        saved.setStatus(OrderStatus.CONFIRMED);
+        orderRepository.save(saved);
+
+        cart.getItems().clear();
+        cartRepository.save(cart);
+
+        List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
+        OrderResponseDTO dto = mapToDTO(saved, payment);
+        dto.setCustomerOrderNumber(userOrders.size());
+
+        return dto;
+    }
+
+    // ---- Buy Now: an express checkout for ONE product, completely
+    // independent of the customer's cart. This never reads or writes
+    // Cart/CartItem at all.
+    @Transactional
+    public OrderResponseDTO checkoutSingleItem(String email, Long addressId, Long productId, Integer quantity,
+                                                String paymentMethod, String transactionId, PaymentStatus paymentStatus) {
+
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero.");
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Address address = addressRepository.findByIdAndUserEmail(addressId, email)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Please select a valid shipping address before checking out."));
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+        if (available < quantity) {
+            throw new IllegalStateException(
+                    "\"" + product.getName() + "\" only has " + available + " unit(s) left.");
+        }
+
+        Order order = new Order();
+        order.setUser(user);
+        order.setStatus(OrderStatus.PENDING);
+
+        order.setShippingFullName(address.getFullName());
+        order.setShippingPhone(address.getPhone());
+        order.setShippingAddressLine1(address.getAddressLine1());
+        order.setShippingAddressLine2(address.getAddressLine2());
+        order.setShippingCity(address.getCity());
+        order.setShippingState(address.getState());
+        order.setShippingPostalCode(address.getPostalCode());
+        order.setShippingCountry(address.getCountry());
+
+        double finalPrice = product.getFinalPrice();
+        double lineTotal = Math.round(finalPrice * quantity * 100.0) / 100.0;
+
+        OrderItem orderItem = new OrderItem();
+        orderItem.setOrder(order);
+        orderItem.setProduct(product);
+        orderItem.setProductName(product.getName());
+        orderItem.setPriceAtPurchase(finalPrice);
+        orderItem.setQuantity(quantity);
+        orderItem.setLineTotal(lineTotal);
+        orderItem.setStatus(OrderStatus.CONFIRMED);
+
+        order.setItems(new ArrayList<>(List.of(orderItem)));
+        order.setTotalAmount(lineTotal);
+
+        Order saved = orderRepository.save(order);
+
+        Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
+
+        saved.setStatus(OrderStatus.CONFIRMED);
+        orderRepository.save(saved);
+
+        // Reduce stock for just this product — the cart is never touched.
+        product.setStockQuantity(available - quantity);
+        productRepository.save(product);
+
+        List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
+        OrderResponseDTO dto = mapToDTO(saved, payment);
+        dto.setCustomerOrderNumber(userOrders.size());
+
+        return dto;
+    }
+
+    @Transactional
+    public OrderResponseDTO placeCodBuyNowOrder(String email, Long addressId, Long productId, Integer quantity) {
+        return checkoutSingleItem(email, addressId, productId, quantity,
+                "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING);
+    }
+
     private Payment recordPayment(Order order, String method, String transactionId) {
+        return recordPayment(order, method, transactionId, PaymentStatus.SUCCESS);
+    }
+
+    private Payment recordPayment(Order order, String method, String transactionId, PaymentStatus status) {
         Payment payment = new Payment();
         payment.setOrder(order);
         payment.setMethod(method);
-        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setStatus(status);
         payment.setTransactionId(transactionId);
         payment.setAmount(order.getTotalAmount());
         payment.setPaidAt(LocalDateTime.now());
@@ -280,6 +459,88 @@ public class OrderService {
         recomputeOrderStatus(item.getOrder());
 
         return mapToVendorDTO(item);
+    }
+
+    // ---- Customer-initiated cancellation ----
+
+    // A customer can cancel their own order item only while it's still
+    // PENDING or CONFIRMED — once a vendor has moved it to PROCESSING or
+    // beyond, they're already acting on it, so the customer can no longer
+    // unilaterally back out (a real Return request is the right path at
+    // that point, once that module exists).
+    @Transactional
+    public OrderResponseDTO cancelOrderItem(String customerEmail, Long orderItemId) {
+
+        OrderItem item = orderItemRepository.findByIdAndOrder_User_Email(orderItemId, customerEmail)
+                .orElseThrow(() -> new SecurityException(
+                        "This order item doesn't exist or doesn't belong to your account."));
+
+        OrderStatus currentStatus = item.getStatus();
+
+        if (TERMINAL_STATUSES.contains(currentStatus)) {
+            throw new IllegalStateException("This item is already " + currentStatus + ".");
+        }
+
+        if (currentStatus != OrderStatus.PENDING && currentStatus != OrderStatus.CONFIRMED) {
+            throw new IllegalStateException(
+                    "This item is already " + currentStatus + " and can no longer be cancelled. " +
+                    "Contact the seller if you need to return it once delivered.");
+        }
+
+        // Give the stock back — it was reduced at checkout time.
+        Product product = item.getProduct();
+        if (product != null) {
+            int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            product.setStockQuantity(currentStock + item.getQuantity());
+            productRepository.save(product);
+        }
+
+        item.setStatus(OrderStatus.CANCELLED);
+        orderItemRepository.save(item);
+
+        Order order = item.getOrder();
+        recomputeOrderStatus(order);
+
+        Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
+        return mapToDTO(order, payment);
+    }
+
+    // Cancels every still-cancellable item on an order in one action —
+    // used for "Cancel Order" rather than cancelling line items one at a time.
+    // Items already past CONFIRMED are simply left alone rather than
+    // failing the whole request.
+    @Transactional
+    public OrderResponseDTO cancelOrder(String customerEmail, Long orderId) {
+
+        Order order = orderRepository.findByIdAndUserEmail(orderId, customerEmail)
+                .orElseThrow(() -> new SecurityException("Order not found for this account."));
+
+        boolean cancelledAny = false;
+
+        for (OrderItem item : order.getItems()) {
+            OrderStatus status = item.getStatus();
+            if (status == OrderStatus.PENDING || status == OrderStatus.CONFIRMED) {
+                Product product = item.getProduct();
+                if (product != null) {
+                    int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+                    product.setStockQuantity(currentStock + item.getQuantity());
+                    productRepository.save(product);
+                }
+                item.setStatus(OrderStatus.CANCELLED);
+                orderItemRepository.save(item);
+                cancelledAny = true;
+            }
+        }
+
+        if (!cancelledAny) {
+            throw new IllegalStateException(
+                    "None of the items in this order can be cancelled anymore — they're already being processed.");
+        }
+
+        recomputeOrderStatus(order);
+
+        Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
+        return mapToDTO(order, payment);
     }
 
     // The parent Order's overall status is the LEAST advanced status among

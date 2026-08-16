@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { getCart } from "../services/cartService";
-import { createRazorpayOrder, verifyPayment } from "../services/paymentService";
+import { getProductById } from "../services/productService";
+import {
+  createRazorpayOrder,
+  verifyPayment,
+  placeCodOrder,
+  createRazorpayOrderForProduct,
+  verifyBuyNowPayment,
+  placeCodBuyNowOrder,
+} from "../services/paymentService";
 import { getAddresses, addAddress } from "../services/addressService";
 
 const emptyForm = {
@@ -21,7 +29,7 @@ const PAYMENT_METHODS = [
     id: "upi",
     name: "UPI / QR Code",
     description: "Instant payment via Google Pay, PhonePe, Paytm, or BHIM",
-    icon: "⚡",
+    icon: "📱",
     badges: ["Google Pay", "PhonePe", "Paytm", "BHIM"],
     isRazorpay: true,
   },
@@ -61,31 +69,62 @@ const PAYMENT_METHODS = [
 
 function Checkout() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [cart, setCart] = useState(null);
+  // If we arrived here via a "Buy Now" click, this holds
+  // { productId, quantity, productName }. Its presence is what switches
+  // this whole page from "checkout the cart" to "checkout just this one
+  // product" — the cart is never read or written in that mode.
+  const buyNow = location.state?.buyNow || null;
+
+  const [orderSummary, setOrderSummary] = useState(null); // { items, totalAmount } — cart OR single-product, same shape
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [savingAddress, setSavingAddress] = useState(false);
 
-  // Payment Selection State
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("upi");
 
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
 
   useEffect(() => {
-    fetchCart();
+    fetchOrderSummary();
     fetchAddresses();
-  }, []);
+    // Re-run if the buyNow product changes (e.g. clicking Buy Now on a
+    // different product while already on this page via browser back/forward).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buyNow?.productId]);
 
-  const fetchCart = async () => {
+  const fetchOrderSummary = async () => {
+    setLoading(true);
     try {
-      const data = await getCart();
-      setCart(data);
+      if (buyNow) {
+        // Single-product mode — fetch just that product's current price/
+        // discount, never touch the cart.
+        const product = await getProductById(buyNow.productId);
+        const finalPrice = product.finalPrice ?? product.price;
+        const quantity = buyNow.quantity || 1;
+        const lineTotal = Math.round(finalPrice * quantity * 100) / 100;
+
+        setOrderSummary({
+          items: [
+            {
+              id: `buynow-${product.id}`,
+              productName: product.name,
+              quantity,
+              lineTotal,
+            },
+          ],
+          totalAmount: lineTotal,
+        });
+      } else {
+        const data = await getCart();
+        setOrderSummary(data);
+      }
     } catch (err) {
-      console.error("Failed to load cart", err);
+      console.error("Failed to load order summary", err);
     } finally {
       setLoading(false);
     }
@@ -139,24 +178,27 @@ function Checkout() {
 
     setPlacing(true);
 
-    // Handle Cash on Delivery
+    // ---- Cash on Delivery ----
     if (selectedPaymentMethod === "cod") {
       try {
-        // Direct COD call logic here if implemented on backend
-        alert("COD order placement logic executed successfully!");
-        // Example redirect:
-        // navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
+        const order = buyNow
+          ? await placeCodBuyNowOrder(selectedAddressId, buyNow.productId, buyNow.quantity)
+          : await placeCodOrder(selectedAddressId);
+
+        navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
       } catch (err) {
         alert(err.response?.data || "Failed to place COD order.");
-      } finally {
         setPlacing(false);
       }
       return;
     }
 
-    // Handle Online Payments via Razorpay
+    // ---- Online Payments via Razorpay ----
     try {
-      const razorpayOrder = await createRazorpayOrder();
+      const razorpayOrder = buyNow
+        ? await createRazorpayOrderForProduct(buyNow.productId, buyNow.quantity)
+        : await createRazorpayOrder();
+
       const selectedAddr = addresses.find((a) => a.id === selectedAddressId);
       const currentAddressId = selectedAddressId; // Scope lock
 
@@ -165,7 +207,7 @@ function Checkout() {
         amount: razorpayOrder.amountInPaise,
         currency: razorpayOrder.currency,
         name: "ShopStack",
-        description: "Order Payment",
+        description: buyNow ? buyNow.productName : "Order Payment",
         order_id: razorpayOrder.razorpayOrderId,
         prefill: {
           name: selectedAddr?.fullName || "",
@@ -191,12 +233,21 @@ function Checkout() {
         },
         handler: async (response) => {
           try {
-            const order = await verifyPayment({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-              addressId: currentAddressId,
-            });
+            const order = buyNow
+              ? await verifyBuyNowPayment({
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                  addressId: currentAddressId,
+                  productId: buyNow.productId,
+                  quantity: buyNow.quantity,
+                })
+              : await verifyPayment({
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                  addressId: currentAddressId,
+                });
 
             navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
           } catch (err) {
@@ -228,10 +279,10 @@ function Checkout() {
       razorpayInstance.open();
     } catch (err) {
       alert(
-        err.response?.data || "Failed to start payment. Please review your cart."
+        err.response?.data || "Failed to start payment. Please review your order."
       );
       setPlacing(false);
-      fetchCart();
+      fetchOrderSummary();
     }
   };
 
@@ -246,12 +297,14 @@ function Checkout() {
     );
   }
 
-  const items = cart?.items || [];
+  const items = orderSummary?.items || [];
 
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center gap-4">
-        <h2 className="text-xl font-medium text-slate-600">Your cart is empty.</h2>
+        <h2 className="text-xl font-medium text-slate-600">
+          {buyNow ? "This product is unavailable." : "Your cart is empty."}
+        </h2>
         <button
           onClick={() => navigate("/products")}
           className="bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-xl font-semibold transition shadow-xs cursor-pointer"
@@ -265,9 +318,15 @@ function Checkout() {
   return (
     <div className="min-h-screen bg-stone-50/60 p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl sm:text-4xl font-serif font-bold text-slate-900 mb-8">
+        <h1 className="text-3xl sm:text-4xl font-serif font-bold text-slate-900 mb-2">
           Checkout
         </h1>
+        {buyNow && (
+          <p className="text-sm text-slate-500 mb-6">
+            Buying <span className="font-semibold text-slate-700">{buyNow.productName}</span> directly — your cart is untouched.
+          </p>
+        )}
+        {!buyNow && <div className="mb-8" />}
 
         {/* 1. Shipping Address Section */}
         <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs p-6 mb-6">
@@ -422,7 +481,7 @@ function Checkout() {
           )}
         </div>
 
-        {/* 2. Real-Time E-Commerce Payment Options Section */}
+        {/* 2. Payment Options Section */}
         <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -469,7 +528,6 @@ function Checkout() {
                       </div>
                     </div>
 
-                    {/* Brand Pill Badges */}
                     <div className="hidden sm:flex flex-wrap gap-1.5 justify-end max-w-[180px]">
                       {method.badges.map((b, i) => (
                         <span
@@ -512,7 +570,7 @@ function Checkout() {
           <div className="border-t border-stone-100 pt-4 mt-4 space-y-2">
             <div className="flex justify-between text-xs text-slate-500">
               <span>Subtotal</span>
-              <span>₹{cart.totalAmount}</span>
+              <span>₹{orderSummary.totalAmount}</span>
             </div>
             <div className="flex justify-between text-xs text-slate-500">
               <span>Delivery Charges</span>
@@ -520,7 +578,7 @@ function Checkout() {
             </div>
             <div className="flex justify-between text-base font-extrabold text-slate-900 border-t border-stone-100 pt-3 mt-1">
               <span>Total Payable</span>
-              <span className="text-xl">₹{cart.totalAmount}</span>
+              <span className="text-xl">₹{orderSummary.totalAmount}</span>
             </div>
           </div>
         </div>
@@ -538,9 +596,9 @@ function Checkout() {
               <span>Processing Order...</span>
             </>
           ) : selectedPaymentMethod === "cod" ? (
-            `Place Order (COD) • ₹${cart.totalAmount}`
+            `Place Order (COD) • ₹${orderSummary.totalAmount}`
           ) : (
-            `Pay ₹${cart.totalAmount} via ${
+            `Pay ₹${orderSummary.totalAmount} via ${
               PAYMENT_METHODS.find((m) => m.id === selectedPaymentMethod)?.name
             }`
           )}
@@ -548,10 +606,10 @@ function Checkout() {
 
         <button
           type="button"
-          onClick={() => navigate("/cart")}
+          onClick={() => navigate(buyNow ? -1 : "/cart")}
           className="w-full mt-3 bg-white hover:bg-stone-50 border border-stone-200/80 text-slate-700 py-3 rounded-xl font-semibold text-xs transition cursor-pointer"
         >
-          Back to Cart
+          {buyNow ? "Back" : "Back to Cart"}
         </button>
       </div>
     </div>

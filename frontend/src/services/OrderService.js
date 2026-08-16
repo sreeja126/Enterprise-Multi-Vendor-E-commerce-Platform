@@ -17,6 +17,18 @@ export const getOrderById = async (id) => {
   return response.data;
 };
 
+// ---- Customer-initiated cancellation ----
+
+export const cancelOrderItem = async (itemId) => {
+  const response = await api.put(`/orders/items/${itemId}/cancel`);
+  return response.data;
+};
+
+export const cancelOrder = async (orderId) => {
+  const response = await api.put(`/orders/${orderId}/cancel`);
+  return response.data;
+};
+
 // ---- Vendor order fulfillment ----
 
 // Only this vendor's own line items across every order — never another
@@ -35,6 +47,8 @@ const orderService = {
   checkout,
   getOrderHistory,
   getOrderById,
+  cancelOrderItem,
+  cancelOrder,
   getVendorOrderItems,
   updateOrderItemStatus,
 };

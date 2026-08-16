@@ -16,4 +16,8 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     // Ownership check for a status update: this item must both exist AND
     // belong to a product owned by this vendor.
     Optional<OrderItem> findByIdAndProduct_Vendor_User_Email(Long id, String email);
+
+    // Ownership check for customer-initiated cancellation: this item must
+    // belong to an order actually placed by this customer.
+    Optional<OrderItem> findByIdAndOrder_User_Email(Long id, String email);
 }
