@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { getOrderById } from "../services/OrderService";
+import { getOrderById, cancelOrderItem, cancelOrder } from "../services/OrderService";
 
 const STATUS_STYLES = {
   PENDING: "bg-amber-50 text-amber-700 border-amber-200",
@@ -14,6 +14,10 @@ const STATUS_STYLES = {
 
 const ORDER_STEPS = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"];
 
+// A customer can only cancel while an item hasn't started being fulfilled
+// yet — matches the backend's own rule in OrderService.cancelOrderItem.
+const CANCELLABLE_STATUSES = new Set(["PENDING", "CONFIRMED"]);
+
 function OrderDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -22,6 +26,7 @@ function OrderDetails() {
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState(null); // item id, or "order" for whole-order cancel
 
   useEffect(() => {
     fetchOrder();
@@ -35,6 +40,34 @@ function OrderDetails() {
       console.error("Failed to fetch order:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelItem = async (itemId) => {
+    if (!window.confirm("Cancel this item? This can't be undone.")) return;
+
+    setCancellingId(itemId);
+    try {
+      const updated = await cancelOrderItem(itemId);
+      setOrder(updated);
+    } catch (err) {
+      alert(err.response?.data || "Failed to cancel this item.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const handleCancelWholeOrder = async () => {
+    if (!window.confirm("Cancel this entire order? This can't be undone.")) return;
+
+    setCancellingId("order");
+    try {
+      const updated = await cancelOrder(order.id);
+      setOrder(updated);
+    } catch (err) {
+      alert(err.response?.data || "Failed to cancel this order.");
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -62,7 +95,6 @@ function OrderDetails() {
     );
   }
 
-  // Check whether the order is Cash on Delivery
   const isCOD =
     order.paymentMethod === "COD" ||
     order.paymentMethod === "cod" ||
@@ -71,10 +103,14 @@ function OrderDetails() {
   const currentStepIndex = ORDER_STEPS.indexOf(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "RETURNED";
 
+  const anyItemCancellable = (order.items || []).some((item) =>
+    CANCELLABLE_STATUSES.has(item.status)
+  );
+
   return (
     <div className="min-h-screen bg-stone-50/60 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
-        
+
         {/* Top Bar */}
         <div className="mb-6 flex items-center justify-between">
           <button
@@ -83,6 +119,16 @@ function OrderDetails() {
           >
             ← Back to Orders
           </button>
+
+          {anyItemCancellable && (
+            <button
+              onClick={handleCancelWholeOrder}
+              disabled={cancellingId === "order"}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 border border-rose-200 hover:bg-rose-50 px-3.5 py-2 rounded-xl transition cursor-pointer disabled:opacity-50"
+            >
+              {cancellingId === "order" ? "Cancelling…" : "Cancel Order"}
+            </button>
+          )}
         </div>
 
         {/* Confirmation banner when coming directly from checkout */}
@@ -169,10 +215,10 @@ function OrderDetails() {
 
         {/* 2-Column Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
+
           {/* Left Column: Items & Payment Details */}
           <div className="lg:col-span-7 space-y-6">
-            
+
             {/* Items */}
             <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs overflow-hidden">
               <div className="p-5 border-b border-stone-100 bg-stone-50/50">
@@ -181,20 +227,45 @@ function OrderDetails() {
                 </h2>
               </div>
               <div className="divide-y divide-stone-100">
-                {order.items?.map((item, idx) => (
-                  <div key={item.id || idx} className="p-5 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-stone-100 border rounded-lg flex items-center justify-center text-stone-400 font-bold shrink-0">
-                        🛍️
+                {order.items?.map((item, idx) => {
+                  const itemCancellable = CANCELLABLE_STATUSES.has(item.status);
+
+                  return (
+                    <div key={item.id || idx} className="p-5 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-stone-100 border rounded-lg flex items-center justify-center text-stone-400 font-bold shrink-0">
+                          📦
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900 text-sm">{item.productName}</p>
+                          <p className="text-xs text-slate-500">₹{item.priceAtPurchase} × {item.quantity}</p>
+                          {item.status && (
+                            <span
+                              className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                STATUS_STYLES[item.status] || "bg-stone-100 text-stone-600 border-stone-200"
+                              }`}
+                            >
+                              {item.status}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-slate-900 text-sm">{item.productName}</p>
-                        <p className="text-xs text-slate-500">₹{item.priceAtPurchase} × {item.quantity}</p>
+
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="font-bold text-slate-900 text-sm">₹{item.lineTotal}</p>
+                        {itemCancellable && (
+                          <button
+                            onClick={() => handleCancelItem(item.id)}
+                            disabled={cancellingId === item.id}
+                            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition cursor-pointer disabled:opacity-50"
+                          >
+                            {cancellingId === item.id ? "Cancelling…" : "Cancel"}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <p className="font-bold text-slate-900 text-sm">₹{item.lineTotal}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -239,7 +310,7 @@ function OrderDetails() {
 
           {/* Right Column: Address & Total Summary */}
           <div className="lg:col-span-5 space-y-6">
-            
+
             {/* Address */}
             <div className="bg-white rounded-2xl border border-stone-200/80 p-6 shadow-xs">
               <h2 className="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">

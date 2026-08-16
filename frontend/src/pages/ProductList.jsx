@@ -143,19 +143,18 @@ function ProductList() {
     }
   };
 
-  const handlePurchase = async (id) => {
-    setPurchasingId(id);
-    try {
-      await addToCart(id, 1);
-      
-      // Dispatch event to update cart badge in Navbar immediately
-      window.dispatchEvent(new Event("refreshCart"));
-
-      navigate("/checkout");
-    } catch (error) {
-      alert(error.response?.data || "Failed to start checkout. Product may be out of stock.");
-      setPurchasingId(null);
-    }
+  const handlePurchase = async (product) => {
+    const productId = product.id || product._id || product.productId;
+    setPurchasingId(productId);
+    navigate("/checkout", {
+      state: {
+        buyNow: {
+          productId,
+          quantity: 1,
+          productName: product.name,
+        },
+      },
+    });
   };
 
   const handleAddToCart = async (product) => {
@@ -165,8 +164,6 @@ function ProductList() {
       
       // Dispatch event to update cart badge in Navbar immediately
       window.dispatchEvent(new Event("refreshCart"));
-
-    
     } catch (error) {
       alert(error.response?.data || "Failed to add to cart.");
     }
@@ -263,11 +260,11 @@ function ProductList() {
             <h2 className="text-2xl font-medium">No products available</h2>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {products.map((product) => {
               const id = product.id || product._id || product.productId;
 
-              const FALLBACK_IMAGE = "https://via.placeholder.com/400x250?text=No+Image";
+              const FALLBACK_IMAGE = "https://via.placeholder.com/400x400?text=No+Image+Available";
               const imageSrc =
                 product.imageUrl ||
                 product.image ||
@@ -306,34 +303,45 @@ function ProductList() {
               return (
                 <div
                   key={id}
-                  className="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between"
+                  className="group bg-white rounded-2xl border border-stone-200 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
                 >
                   <div>
-                    <div className="relative">
+                    {/* Modern Product Image Container */}
+                    <div className="relative aspect-square w-full bg-stone-100 overflow-hidden">
                       <img
                         src={imageSrc}
                         alt={product.name}
-                        className="w-full h-52 object-cover"
+                        className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
+                        loading="lazy"
                         onError={(e) => {
                           e.target.onerror = null;
                           e.target.src = FALLBACK_IMAGE;
                         }}
                       />
-                      {hasDiscount && (
-                        <span className="absolute top-3 left-3 bg-rose-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-sm">
-                          {Math.round(product.discountPercentage)}% OFF
-                        </span>
-                      )}
 
-                      {/* Wishlist Button - Only visible to non-vendors/customers */}
+                      {/* Image Badges */}
+                      <div className="absolute top-3 left-3 flex flex-col gap-1 items-start">
+                        {hasDiscount && (
+                          <span className="bg-rose-600 text-white text-xs font-bold px-2.5 py-1 rounded-md shadow-sm">
+                            {Math.round(product.discountPercentage)}% OFF
+                          </span>
+                        )}
+                        {isOwner && (
+                          <span className="bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-sm">
+                            Your Product
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Wishlist Button */}
                       {!isVendor && (
                         <button
                           onClick={() => handleToggleWishlist(id)}
                           disabled={wishlistBusyId === id}
-                          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition bg-white/90 hover:bg-white text-xl cursor-pointer ${
+                          className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center shadow-md backdrop-blur-md transition-all cursor-pointer ${
                             wishlistIds.has(String(id))
-                              ? "text-rose-600"
-                              : "text-slate-500 hover:text-slate-700"
+                              ? "bg-white text-rose-600 scale-105"
+                              : "bg-white/80 hover:bg-white text-slate-600 hover:text-slate-900 hover:scale-110"
                           }`}
                           title={wishlistIds.has(String(id)) ? "Remove from wishlist" : "Add to wishlist"}
                         >
@@ -344,56 +352,57 @@ function ProductList() {
 
                     <div className="p-5">
                       {(product.categoryName || product.category?.name) && (
-                        <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full mb-2">
+                        <span className="inline-block bg-slate-100 text-slate-700 text-xs font-medium uppercase tracking-wider px-2 py-0.5 rounded mb-2">
                           {product.categoryName || product.category?.name}
                         </span>
                       )}
 
-                      <h2 className="text-lg font-bold text-slate-900 leading-snug">
+                      <h2 className="text-base font-bold text-slate-900 leading-snug line-clamp-1 group-hover:text-emerald-800 transition-colors">
                         {product.name}
                       </h2>
-                      <p className="text-sm text-slate-500 mb-2">{product.brand}</p>
+                      {product.brand && (
+                        <p className="text-xs text-slate-400 font-medium mb-1">{product.brand}</p>
+                      )}
 
-                      <p className="text-slate-600 text-sm line-clamp-2 mb-3">
+                      <p className="text-slate-600 text-xs line-clamp-2 my-2 min-h-[2rem]">
                         {product.description}
                       </p>
 
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between pt-2">
                         <div>
                           {hasDiscount ? (
                             <div className="flex items-baseline gap-2">
-                              <span className="text-slate-400 line-through text-sm">
-                                ₹{product.price}
-                              </span>
-                              <span className="text-xl font-bold text-amber-600">
+                              <span className="text-lg font-bold text-slate-900">
                                 ₹{product.finalPrice}
+                              </span>
+                              <span className="text-xs text-slate-400 line-through">
+                                ₹{product.price}
                               </span>
                             </div>
                           ) : (
-                            <p className="text-xl font-bold text-amber-600">
+                            <p className="text-lg font-bold text-slate-900">
                               ₹{product.price}
                             </p>
                           )}
                         </div>
 
                         {isOutOfStock ? (
-                          <span className="text-rose-600 text-xs font-semibold">
+                          <span className="text-rose-600 text-xs font-medium bg-rose-50 px-2 py-0.5 rounded">
                             Out of Stock
                           </span>
                         ) : (
-                          <span className="text-emerald-600 text-xs font-semibold">
-                            {stockVal} in stock
+                          <span className="text-emerald-700 text-xs font-medium bg-emerald-50 px-2 py-0.5 rounded">
+                            {stockVal} left
                           </span>
                         )}
                       </div>
 
                       {product.vendor && (
-                        <p className="text-xs text-slate-400 mb-4">
+                        <p className="text-[11px] text-slate-400 mt-2">
                           Sold by{" "}
                           <span className="font-medium text-slate-600">
                             {product.vendor.name || product.vendor.username || product.vendor.email}
                           </span>
-                          {isOwner && <span className="text-emerald-600 font-bold ml-1">(Your Product)</span>}
                         </p>
                       )}
                     </div>
@@ -401,52 +410,51 @@ function ProductList() {
 
                   {/* BUTTON ACTIONS */}
                   <div className="p-5 pt-0 flex flex-col gap-2">
-                    {/* View Details - Visible to everyone */}
                     <button
                       onClick={() => navigate(`/products/${id}`)}
-                      className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded-lg text-sm font-medium transition cursor-pointer"
                     >
                       View Details
                     </button>
 
-                    {/* VENDOR ACTIONS - Only on their own products */}
+                    {/* VENDOR ACTIONS */}
                     {isOwner && (
                       <div className="flex gap-2">
                         <button
                           onClick={() => navigate(`/products/edit/${id}`)}
-                          className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                          className="flex-1 border border-stone-300 text-slate-700 hover:bg-stone-100 py-2 rounded-lg text-xs font-medium transition cursor-pointer"
                         >
                           Edit
                         </button>
 
                         <button
                           onClick={() => handleDelete(id)}
-                          className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
+                          className="flex-1 border border-rose-200 text-rose-600 hover:bg-rose-50 py-2 rounded-lg text-xs font-medium transition cursor-pointer"
                         >
                           Delete
                         </button>
                       </div>
                     )}
 
-                    {/* CUSTOMER ACTIONS - "Buy Now" & "Add to Cart" strictly for non-vendors/customers */}
+                    {/* CUSTOMER ACTIONS */}
                     {!isVendor && (
                       <div className="flex gap-2">
                         <button
                           disabled={isOutOfStock || purchasingId === id}
-                          onClick={() => handlePurchase(id)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
+                          onClick={() => handlePurchase(product)}
+                          className={`flex-1 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
                             isOutOfStock
                               ? "bg-stone-200 text-stone-400 cursor-not-allowed"
                               : "bg-amber-500 hover:bg-amber-600 text-white"
                           }`}
                         >
-                          {purchasingId === id ? "Processing…" : isOutOfStock ? "Out of Stock" : "Buy Now"}
+                          {purchasingId === id ? "Processing…" : isOutOfStock ? "Unavailable" : "Buy Now"}
                         </button>
 
                         <button
                           disabled={isOutOfStock}
                           onClick={() => handleAddToCart(product)}
-                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition cursor-pointer ${
+                          className={`flex-1 py-2 rounded-lg text-xs font-medium border transition cursor-pointer ${
                             isOutOfStock
                               ? "border-stone-200 text-stone-400 cursor-not-allowed"
                               : "border-stone-300 text-slate-700 hover:bg-stone-100"

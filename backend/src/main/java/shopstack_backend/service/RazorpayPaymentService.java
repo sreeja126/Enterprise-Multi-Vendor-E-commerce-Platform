@@ -11,7 +11,10 @@ import org.springframework.stereotype.Service;
 import shopstack_backend.dto.CartResponseDTO;
 import shopstack_backend.dto.OrderResponseDTO;
 import shopstack_backend.dto.RazorpayOrderResponseDTO;
+import shopstack_backend.dto.VerifyBuyNowRequest;
 import shopstack_backend.dto.VerifyPaymentRequest;
+import shopstack_backend.entity.Product;
+import shopstack_backend.repository.ProductRepository;
 
 @Service
 public class RazorpayPaymentService {
@@ -24,6 +27,9 @@ public class RazorpayPaymentService {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Value("${razorpay.key.id}")
     private String keyId;
@@ -61,6 +67,42 @@ public class RazorpayPaymentService {
         );
     }
 
+    // Buy Now variant — amount is derived from ONE product × quantity,
+    // never from the cart. This is what makes Buy Now genuinely independent
+    // of whatever else the customer already has sitting in their cart.
+    public RazorpayOrderResponseDTO createRazorpayOrderForProduct(String email, Long productId, Integer quantity)
+            throws Exception {
+
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero.");
+        }
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+        if (available < quantity) {
+            throw new IllegalStateException(
+                    "\"" + product.getName() + "\" only has " + available + " unit(s) left.");
+        }
+
+        long amountInPaise = Math.round(product.getFinalPrice() * quantity * 100);
+
+        JSONObject options = new JSONObject();
+        options.put("amount", amountInPaise);
+        options.put("currency", "INR");
+        options.put("receipt", "buynow_" + email + "_" + System.currentTimeMillis());
+
+        Order razorpayOrder = razorpayClient.orders.create(options);
+
+        return new RazorpayOrderResponseDTO(
+                razorpayOrder.get("id"),
+                keyId,
+                amountInPaise,
+                "INR"
+        );
+    }
+
     // Step 2: after the customer completes payment in the Razorpay modal,
     // the frontend sends back razorpay_order_id, razorpay_payment_id, and
     // razorpay_signature. We MUST verify the signature ourselves — never
@@ -79,21 +121,49 @@ public class RazorpayPaymentService {
             throw new IllegalArgumentException("Please select a shipping address before checking out.");
         }
 
-        JSONObject attributes = new JSONObject();
-        attributes.put("razorpay_order_id", request.getRazorpayOrderId());
-        attributes.put("razorpay_payment_id", request.getRazorpayPaymentId());
-        attributes.put("razorpay_signature", request.getRazorpaySignature());
-
-        boolean isValid = Utils.verifyPaymentSignature(attributes, keySecret);
-
-        if (!isValid) {
-            throw new SecurityException("Payment verification failed. This payment could not be confirmed.");
-        }
+        verifySignature(request.getRazorpayOrderId(), request.getRazorpayPaymentId(), request.getRazorpaySignature());
 
         // Signature is valid — genuinely paid via Razorpay. Now create the
         // actual order (validates stock again, snapshots prices and the
         // chosen address, reduces stock, clears cart) and record this
         // real transaction ID.
         return orderService.checkout(email, request.getAddressId(), "RAZORPAY", request.getRazorpayPaymentId());
+    }
+
+    // Buy Now variant — same signature verification, but completes a
+    // single-item order instead of the whole cart.
+    public OrderResponseDTO verifyAndCompleteBuyNowOrder(String email, VerifyBuyNowRequest request) throws Exception {
+
+        if (request.getRazorpayOrderId() == null ||
+            request.getRazorpayPaymentId() == null ||
+            request.getRazorpaySignature() == null) {
+            throw new SecurityException("Incomplete payment verification data.");
+        }
+
+        if (request.getAddressId() == null) {
+            throw new IllegalArgumentException("Please select a shipping address before checking out.");
+        }
+
+        verifySignature(request.getRazorpayOrderId(), request.getRazorpayPaymentId(), request.getRazorpaySignature());
+
+        return orderService.checkoutSingleItem(
+                email, request.getAddressId(), request.getProductId(), request.getQuantity(),
+                "RAZORPAY", request.getRazorpayPaymentId(),
+                shopstack_backend.entity.PaymentStatus.SUCCESS
+        );
+    }
+
+    private void verifySignature(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature)
+            throws Exception {
+        JSONObject attributes = new JSONObject();
+        attributes.put("razorpay_order_id", razorpayOrderId);
+        attributes.put("razorpay_payment_id", razorpayPaymentId);
+        attributes.put("razorpay_signature", razorpaySignature);
+
+        boolean isValid = Utils.verifyPaymentSignature(attributes, keySecret);
+
+        if (!isValid) {
+            throw new SecurityException("Payment verification failed. This payment could not be confirmed.");
+        }
     }
 }

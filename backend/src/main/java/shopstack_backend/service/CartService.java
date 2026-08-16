@@ -125,9 +125,18 @@ public class CartService {
         CartItem item = cartItemRepository.findByIdAndCartUserEmail(itemId, email)
                 .orElseThrow(() -> new SecurityException("Cart item not found for this account."));
 
-        cartItemRepository.delete(item);
+        Cart cart = item.getCart();
 
-        return mapToDTO(cartRepository.findByUserEmail(email).orElseThrow());
+        // Keep the in-memory collection in sync explicitly, rather than
+        // relying on a fresh repository query to correctly reflect the
+        // delete — Hibernate's first-level session cache can otherwise
+        // return the same managed Cart instance with a stale already-loaded
+        // items collection that still shows the item as present.
+        cart.getItems().remove(item);
+        cartItemRepository.delete(item);
+        cartItemRepository.flush();
+
+        return mapToDTO(cart);
     }
 
     @Transactional

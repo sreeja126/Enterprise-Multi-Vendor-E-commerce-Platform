@@ -201,8 +201,14 @@ function Cart() {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleQuantityChange(item, item.quantity - 1)}
-                        disabled={updatingId === itemId || item.quantity <= 1}
+                        onClick={() => {
+                          if (item.quantity <= 1) {
+                            handleRemove(item);
+                          } else {
+                            handleQuantityChange(item, item.quantity - 1);
+                          }
+                        }}
+                        disabled={updatingId === itemId}
                         className="w-8 h-8 rounded-lg border border-stone-300 text-slate-600 hover:bg-stone-100 disabled:opacity-40 transition cursor-pointer"
                       >
                         −

@@ -140,15 +140,20 @@ function ProductDetails() {
 
   const handlePurchase = async () => {
     if (!product) return;
-    setPurchasing(true);
     const productId = product.id || product._id || id;
-    try {
-      await addToCart(productId, 1);
-      navigate("/checkout");
-    } catch (err) {
-      alert(err.response?.data?.message || err.response?.data || "Failed to start checkout.");
-      setPurchasing(false);
-    }
+    // Buy Now is a standalone express checkout — it must never touch the
+    // cart, or it ends up bundling in whatever else is already sitting
+    // there. Checkout.jsx detects location.state.buyNow and switches to
+    // the single-item flow instead of loading the cart.
+    navigate("/checkout", {
+      state: {
+        buyNow: {
+          productId,
+          quantity: 1,
+          productName: product.name,
+        },
+      },
+    });
   };
 
   const handleAddToCart = async () => {
