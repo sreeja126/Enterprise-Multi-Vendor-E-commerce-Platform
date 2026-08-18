@@ -157,6 +157,16 @@ function Navbar({ cartCount: initialCartCount = 0 }) {
                 >
                   Orders
                 </Link>
+                <Link
+                  to="/vendor-returns"
+                  className={`px-3.5 py-2 rounded-lg transition ${
+                    isActive("/vendor-returns")
+                      ? "bg-stone-100 text-slate-900 font-semibold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-stone-50"
+                  }`}
+                >
+                  Returns
+                </Link>
               </>
             ) : (
               <>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getOrderById, cancelOrderItem, cancelOrder } from "../services/OrderService";
+import { requestReturn, getMyReturnRequests } from "../services/returnService";
 
 const STATUS_STYLES = {
   PENDING: "bg-amber-50 text-amber-700 border-amber-200",
@@ -9,7 +10,20 @@ const STATUS_STYLES = {
   SHIPPED: "bg-purple-50 text-purple-700 border-purple-200",
   DELIVERED: "bg-emerald-50 text-emerald-700 border-emerald-200",
   CANCELLED: "bg-rose-50 text-rose-700 border-rose-200",
-  RETURNED: "bg-rose-50 text-rose-700 border-rose-200",
+  RETURNED: "bg-orange-50 text-orange-700 border-orange-200",
+  REFUNDED: "bg-slate-100 text-slate-700 border-slate-200",
+};
+
+const RETURN_STATUS_STYLES = {
+  REQUESTED: "bg-amber-50 text-amber-700 border-amber-200",
+  APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  REJECTED: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+const REFUND_STATUS_STYLES = {
+  PENDING: "bg-amber-50 text-amber-700",
+  PROCESSED: "bg-emerald-50 text-emerald-700",
+  FAILED: "bg-rose-50 text-rose-700",
 };
 
 const ORDER_STEPS = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"];
@@ -25,11 +39,16 @@ function OrderDetails() {
   const justPlaced = location.state?.justPlaced;
 
   const [order, setOrder] = useState(null);
+  // Maps orderItemId -> that item's return request (if any exists at all),
+  // so the UI can show its real status instead of just re-showing the
+  // "Request Return" button as if nothing had happened.
+  const [returnsByItemId, setReturnsByItemId] = useState({});
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState(null); // item id, or "order" for whole-order cancel
 
   useEffect(() => {
     fetchOrder();
+    fetchReturns();
   }, [id]);
 
   const fetchOrder = async () => {
@@ -40,6 +59,21 @@ function OrderDetails() {
       console.error("Failed to fetch order:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReturns = async () => {
+    try {
+      const allReturns = await getMyReturnRequests();
+      const map = {};
+      (allReturns || []).forEach((r) => {
+        if (String(r.orderId) === String(id)) {
+          map[r.orderItemId] = r;
+        }
+      });
+      setReturnsByItemId(map);
+    } catch (err) {
+      console.error("Failed to fetch return requests:", err);
     }
   };
 
@@ -56,6 +90,28 @@ function OrderDetails() {
       setCancellingId(null);
     }
   };
+
+  const handleRequestReturn = async (itemId) => {
+    const reason = window.prompt("Why are you returning this item?");
+    if (reason === null) return; // cancelled the prompt
+    if (!reason.trim()) {
+      alert("Please provide a reason for the return.");
+      return;
+    }
+
+    setCancellingId(itemId);
+    try {
+      await requestReturn(itemId, reason.trim());
+      await fetchOrder();
+      await fetchReturns();
+      alert("Return request submitted. The seller will review it shortly.");
+    } catch (err) {
+      alert(err.response?.data || "Failed to submit return request.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
 
   const handleCancelWholeOrder = async () => {
     if (!window.confirm("Cancel this entire order? This can't be undone.")) return;
@@ -229,40 +285,129 @@ function OrderDetails() {
               <div className="divide-y divide-stone-100">
                 {order.items?.map((item, idx) => {
                   const itemCancellable = CANCELLABLE_STATUSES.has(item.status);
+                  const existingReturn = returnsByItemId[item.id];
 
                   return (
-                    <div key={item.id || idx} className="p-5 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-stone-100 border rounded-lg flex items-center justify-center text-stone-400 font-bold shrink-0">
-                          📦
+                    <div key={item.id || idx} className="p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-stone-100 border rounded-lg flex items-center justify-center text-stone-400 font-bold shrink-0">
+                            📦
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-900 text-sm">{item.productName}</p>
+                            <p className="text-xs text-slate-500">₹{item.priceAtPurchase} × {item.quantity}</p>
+                            {item.status && (
+                              <span
+                                className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  STATUS_STYLES[item.status] || "bg-stone-100 text-stone-600 border-stone-200"
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 text-sm">{item.productName}</p>
-                          <p className="text-xs text-slate-500">₹{item.priceAtPurchase} × {item.quantity}</p>
-                          {item.status && (
-                            <span
-                              className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                STATUS_STYLES[item.status] || "bg-stone-100 text-stone-600 border-stone-200"
-                              }`}
+
+                        <div className="flex flex-col items-end gap-2">
+                          <p className="font-bold text-slate-900 text-sm">₹{item.lineTotal}</p>
+                          {itemCancellable && (
+                            <button
+                              onClick={() => handleCancelItem(item.id)}
+                              disabled={cancellingId === item.id}
+                              className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition cursor-pointer disabled:opacity-50"
                             >
-                              {item.status}
-                            </span>
+                              {cancellingId === item.id ? "Cancelling…" : "Cancel"}
+                            </button>
+                          )}
+                          {item.status === "DELIVERED" && !existingReturn && (
+                            <button
+                              onClick={() => handleRequestReturn(item.id)}
+                              disabled={cancellingId === item.id}
+                              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 border border-stone-200 hover:bg-stone-50 px-2.5 py-1 rounded-lg transition cursor-pointer disabled:opacity-50"
+                            >
+                              {cancellingId === item.id ? "Submitting…" : "Request Return"}
+                            </button>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <p className="font-bold text-slate-900 text-sm">₹{item.lineTotal}</p>
-                        {itemCancellable && (
-                          <button
-                            onClick={() => handleCancelItem(item.id)}
-                            disabled={cancellingId === item.id}
-                            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition cursor-pointer disabled:opacity-50"
-                          >
-                            {cancellingId === item.id ? "Cancelling…" : "Cancel"}
-                          </button>
-                        )}
-                      </div>
+                      {/* Refund from a straight cancellation (no return
+                          request involved) — happens when a Razorpay-paid
+                          item is cancelled before delivery. */}
+                      {item.status === "CANCELLED" && item.refund && (
+                        <div className="mt-3 ml-13 bg-stone-50 border border-stone-100 rounded-xl p-3 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
+                              Refund
+                            </span>
+                            <span
+                              className={`font-semibold px-2 py-0.5 rounded-full ${
+                                REFUND_STATUS_STYLES[item.refund.status] || "bg-stone-100 text-slate-600"
+                              }`}
+                            >
+                              ₹{item.refund.amount} — {item.refund.status}
+                            </span>
+                            {item.refund.gatewayRefundId && (
+                              <span className="text-slate-400 font-mono text-[10px]">
+                                {item.refund.gatewayRefundId}
+                              </span>
+                            )}
+                          </div>
+                          {item.refund.failureReason && (
+                            <p className="text-rose-500 mt-1">{item.refund.failureReason}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Return/refund status — this is the piece that was
+                          missing entirely: once a return is requested, this
+                          shows its real status instead of the page looking
+                          unchanged. */}
+                      {existingReturn && (
+                        <div className="mt-3 ml-13 bg-stone-50 border border-stone-100 rounded-xl p-3 text-xs">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
+                              Return
+                            </span>
+                            <span
+                              className={`font-semibold px-2 py-0.5 rounded-full border ${
+                                RETURN_STATUS_STYLES[existingReturn.status] || "bg-stone-100 text-stone-600 border-stone-200"
+                              }`}
+                            >
+                              {existingReturn.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-600">
+                            <span className="font-medium">Your reason:</span> {existingReturn.reason}
+                          </p>
+                          {existingReturn.resolutionNote && (
+                            <p className="text-slate-600 mt-1">
+                              <span className="font-medium">Seller's note:</span> {existingReturn.resolutionNote}
+                            </p>
+                          )}
+
+                          {existingReturn.refund && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-stone-200">
+                              <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
+                                Refund
+                              </span>
+                              <span
+                                className={`font-semibold px-2 py-0.5 rounded-full ${
+                                  REFUND_STATUS_STYLES[existingReturn.refund.status] || "bg-stone-100 text-stone-600"
+                                }`}
+                              >
+                                ₹{existingReturn.refund.amount} — {existingReturn.refund.status}
+                              </span>
+                              {existingReturn.refund.gatewayRefundId && (
+                                <span className="text-slate-400 font-mono text-[10px]">
+                                  {existingReturn.refund.gatewayRefundId}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

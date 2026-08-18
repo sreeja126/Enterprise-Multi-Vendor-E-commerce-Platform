@@ -19,6 +19,7 @@ import OrderHistory from "./pages/OrderHistory";
 import OrderDetails from "./pages/OrderDetails";
 import Wishlist from "./pages/Wishlist";
 import VendorOrders from "./pages/VendorOrders";
+import VendorReturns from "./pages/VendorReturns";
 
 function App() {
   return (
@@ -55,6 +56,7 @@ function App() {
         <Route path="/orders" element={<OrderHistory />} />
         <Route path="/orders/:id" element={<OrderDetails />} />
         <Route path="/vendor-orders" element={<VendorOrders />} />
+        <Route path="/vendor-returns" element={<VendorReturns />} />
         <Route path="/wishlist" element={<Wishlist />} />
       </Routes>
     </BrowserRouter>

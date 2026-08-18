@@ -9,6 +9,7 @@ public class OrderItemResponseDTO {
     private Integer quantity;
     private Double lineTotal;
     private String status;
+    private RefundResponseDTO refund; // null unless this item was actually refunded
 
     public OrderItemResponseDTO() {}
 
@@ -66,5 +67,13 @@ public class OrderItemResponseDTO {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public RefundResponseDTO getRefund() {
+        return refund;
+    }
+
+    public void setRefund(RefundResponseDTO refund) {
+        this.refund = refund;
     }
 }

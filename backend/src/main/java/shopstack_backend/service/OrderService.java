@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import shopstack_backend.dto.OrderItemResponseDTO;
 import shopstack_backend.dto.OrderResponseDTO;
 import shopstack_backend.dto.PaymentResponseDTO;
+import shopstack_backend.dto.RefundResponseDTO;
 import shopstack_backend.dto.VendorOrderItemResponseDTO;
 import shopstack_backend.entity.*;
 import shopstack_backend.repository.AddressRepository;
@@ -15,6 +16,7 @@ import shopstack_backend.repository.OrderItemRepository;
 import shopstack_backend.repository.OrderRepository;
 import shopstack_backend.repository.PaymentRepository;
 import shopstack_backend.repository.ProductRepository;
+import shopstack_backend.repository.RefundRepository;
 import shopstack_backend.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -49,6 +51,12 @@ public class OrderService {
 
     @Autowired
     private AddressRepository addressRepository;
+
+    @Autowired
+    private RefundRepository refundRepository;
+
+    @Autowired
+    private RefundService refundService;
 
     // The standard forward progression. CANCELLED/RETURNED/REFUNDED are
     // exceptions handled separately below, not part of this sequence.
@@ -502,6 +510,14 @@ public class OrderService {
         recomputeOrderStatus(order);
 
         Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
+
+        // If this was actually paid for online (not COD, where nothing was
+        // ever collected), cancelling before delivery still owes the
+        // customer their money back. Reuses the same refund path as
+        // approved returns — a refund doesn't care *why* money needs to
+        // go back, just that it does.
+        refundIfPaidOnline(item, payment);
+
         return mapToDTO(order, payment);
     }
 
@@ -514,6 +530,8 @@ public class OrderService {
 
         Order order = orderRepository.findByIdAndUserEmail(orderId, customerEmail)
                 .orElseThrow(() -> new SecurityException("Order not found for this account."));
+
+        Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
 
         boolean cancelledAny = false;
 
@@ -529,6 +547,8 @@ public class OrderService {
                 item.setStatus(OrderStatus.CANCELLED);
                 orderItemRepository.save(item);
                 cancelledAny = true;
+
+                refundIfPaidOnline(item, payment);
             }
         }
 
@@ -539,8 +559,19 @@ public class OrderService {
 
         recomputeOrderStatus(order);
 
-        Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
         return mapToDTO(order, payment);
+    }
+
+    // Only refunds when money was actually captured online. COD orders
+    // never had anything collected up front, so cancelling one before
+    // delivery is just a cancellation — nothing to reverse.
+    private void refundIfPaidOnline(OrderItem item, Payment payment) {
+        if (payment == null) return;
+        if (!"RAZORPAY".equalsIgnoreCase(payment.getMethod())) return;
+        if (payment.getStatus() != PaymentStatus.SUCCESS) return;
+        if (refundRepository.findByOrderItemId(item.getId()).isPresent()) return; // already refunded once
+
+        refundService.processRefund(item);
     }
 
     // The parent Order's overall status is the LEAST advanced status among
@@ -626,6 +657,18 @@ public class OrderService {
             itemDto.setQuantity(item.getQuantity());
             itemDto.setLineTotal(item.getLineTotal());
             itemDto.setStatus(item.getStatus() != null ? item.getStatus().name() : null);
+
+            refundRepository.findByOrderItemId(item.getId()).ifPresent(refund -> {
+                RefundResponseDTO refundDto = new RefundResponseDTO();
+                refundDto.setAmount(refund.getAmount());
+                refundDto.setMethod(refund.getMethod());
+                refundDto.setStatus(refund.getStatus().name());
+                refundDto.setGatewayRefundId(refund.getGatewayRefundId());
+                refundDto.setProcessedAt(refund.getProcessedAt());
+                refundDto.setFailureReason(refund.getFailureReason());
+                itemDto.setRefund(refundDto);
+            });
+
             return itemDto;
         }).collect(Collectors.toList());
 
