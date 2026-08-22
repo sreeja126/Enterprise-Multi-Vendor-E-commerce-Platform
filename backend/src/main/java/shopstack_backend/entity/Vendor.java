@@ -24,6 +24,8 @@ public class Vendor {
     private String description;
 
     private String status; // e.g., PENDING, APPROVED, REJECTED
+    @Column(name = "commission_rate")
+    private Double commissionRate;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -106,5 +108,13 @@ public class Vendor {
 
     public void setProducts(List<Product> products) {
         this.products = products;
+    }
+
+    public Double getCommissionRate() {
+        return commissionRate;
+    }
+
+    public void setCommissionRate(Double commissionRate) {
+        this.commissionRate = commissionRate;
     }
 }

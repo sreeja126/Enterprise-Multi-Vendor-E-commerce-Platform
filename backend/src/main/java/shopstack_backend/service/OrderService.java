@@ -47,6 +47,8 @@ public class OrderService {
     private RefundService refundService;
     @Autowired(required = false)
     private ProductService productService;
+    @Autowired
+    private CommissionService commissionService;
     private static final List<OrderStatus> PROGRESSION = Arrays.asList(
             OrderStatus.PENDING,
             OrderStatus.CONFIRMED,
@@ -120,6 +122,7 @@ BigDecimal lineTotal = finalPrice
         Payment payment = recordPayment(saved, paymentMethod, transactionId);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
+        commissionService.syncCommissionsForOrder(saved);
         cart.getItems().clear();
         cartRepository.save(cart);
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
@@ -201,6 +204,7 @@ BigDecimal lineTotal = finalPrice
         Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
+        commissionService.syncCommissionsForOrder(saved);
         cart.getItems().clear();
         cartRepository.save(cart);
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
@@ -255,6 +259,7 @@ BigDecimal lineTotal = finalPrice
         Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
+        commissionService.syncCommissionsForOrder(saved);
         product.setStockQuantity(available - quantity);
         productRepository.save(product);
         if (productService != null) {
@@ -352,6 +357,7 @@ BigDecimal lineTotal = finalPrice
         item.setStatus(newStatus);
         orderItemRepository.save(item);
        recomputeOrderStatus(item.getOrder());
+        commissionService.syncCommissionsForOrder(item.getOrder());
         return mapToVendorDTO(item);
     }
     @Transactional
@@ -379,6 +385,7 @@ BigDecimal lineTotal = finalPrice
         orderItemRepository.save(item);
         Order order = item.getOrder();
         recomputeOrderStatus(order);
+        commissionService.syncCommissionsForOrder(order);
         Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
         refundIfPaidOnline(item, payment);
         return mapToDTO(order, payment);
@@ -412,6 +419,7 @@ BigDecimal lineTotal = finalPrice
                     "None of the items in this order can be cancelled anymore — they're already being processed.");
         }
         recomputeOrderStatus(order);
+        commissionService.syncCommissionsForOrder(order);
         return mapToDTO(order, payment);
     }
     private void refundIfPaidOnline(OrderItem item, Payment payment) {

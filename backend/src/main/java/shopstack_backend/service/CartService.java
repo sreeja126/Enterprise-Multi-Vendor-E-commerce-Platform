@@ -3,7 +3,6 @@ package shopstack_backend.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import shopstack_backend.dto.CartItemResponseDTO;
 import shopstack_backend.dto.CartResponseDTO;
 import shopstack_backend.entity.Cart;
@@ -14,7 +13,6 @@ import shopstack_backend.repository.CartItemRepository;
 import shopstack_backend.repository.CartRepository;
 import shopstack_backend.repository.ProductRepository;
 import shopstack_backend.repository.UserRepository;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -35,8 +33,6 @@ public class CartService {
     @Autowired
     private UserRepository userRepository;
 
-    // Get the logged-in customer's cart, creating an empty one if this
-    // is their first time adding anything.
     @Transactional
     public Cart getOrCreateCart(String email) {
 
@@ -53,17 +49,13 @@ public class CartService {
                     return cartRepository.save(cart);
                 });
     }
-
     @Transactional(readOnly = true)
     public CartResponseDTO getCart(String email) {
-
         Cart cart = cartRepository.findByUserEmail(email)
                 .orElse(null);
-
         if (cart == null) {
             return emptyCartResponse();
         }
-
         return mapToDTO(cart);
     }
 
@@ -273,19 +265,12 @@ public class CartService {
             // Quantity
             itemDto.setQuantity(item.getQuantity());
 
-            // Available stock
             int availableStock =
                     product.getStockQuantity() != null
                             ? product.getStockQuantity()
                             : 0;
 
             itemDto.setAvailableStock(availableStock);
-
-            // -------------------------------------------------
-            // BigDecimal line total
-            // finalPrice × quantity
-            // -------------------------------------------------
-
             BigDecimal lineTotal =
                     finalPrice.multiply(
                             BigDecimal.valueOf(item.getQuantity())
@@ -317,11 +302,6 @@ public class CartService {
 
         return dto;
     }
-
-    // ---------------------------------------------------------
-    // Empty cart response
-    // ---------------------------------------------------------
-
     private CartResponseDTO emptyCartResponse() {
 
         CartResponseDTO dto =
