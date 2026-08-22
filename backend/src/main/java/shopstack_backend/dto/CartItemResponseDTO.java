@@ -1,16 +1,18 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
+
 public class CartItemResponseDTO {
 
     private Long id;
     private Long productId;
     private String productName;
     private String imageUrl;
-    private double price;
+    private BigDecimal price;
     private double discountPercentage;
-    private double finalPrice;
+    private BigDecimal finalPrice;
     private Integer quantity;
-    private double lineTotal;
+    private BigDecimal lineTotal;
     private int availableStock;
 
     public CartItemResponseDTO() {}
@@ -47,11 +49,11 @@ public class CartItemResponseDTO {
         this.imageUrl = imageUrl;
     }
 
-    public double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 
@@ -63,12 +65,12 @@ public class CartItemResponseDTO {
         this.discountPercentage = discountPercentage;
     }
 
-    public double getFinalPrice() {
+    public BigDecimal getFinalPrice() {
         return finalPrice;
     }
 
-    public void setFinalPrice(double finalPrice) {
-        this.finalPrice = finalPrice;
+    public void setFinalPrice(BigDecimal finalPrice2) {
+        this.finalPrice = finalPrice2;
     }
 
     public Integer getQuantity() {
@@ -79,12 +81,12 @@ public class CartItemResponseDTO {
         this.quantity = quantity;
     }
 
-    public double getLineTotal() {
+    public BigDecimal getLineTotal() {
         return lineTotal;
     }
 
-    public void setLineTotal(double lineTotal) {
-        this.lineTotal = lineTotal;
+    public void setLineTotal(BigDecimal lineTotal2) {
+        this.lineTotal = lineTotal2;
     }
 
     public int getAvailableStock() {

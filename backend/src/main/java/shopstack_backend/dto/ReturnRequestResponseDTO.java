@@ -1,5 +1,6 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class ReturnRequestResponseDTO {
@@ -8,7 +9,7 @@ public class ReturnRequestResponseDTO {
     private Long orderItemId;
     private Long orderId;
     private String productName;
-    private Double lineTotal;
+    private BigDecimal lineTotal;
     private String reason;
     private String status;
     private LocalDateTime requestedAt;
@@ -30,8 +31,8 @@ public class ReturnRequestResponseDTO {
     public String getProductName() { return productName; }
     public void setProductName(String productName) { this.productName = productName; }
 
-    public Double getLineTotal() { return lineTotal; }
-    public void setLineTotal(Double lineTotal) { this.lineTotal = lineTotal; }
+    public BigDecimal getLineTotal() { return lineTotal; }
+    public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }

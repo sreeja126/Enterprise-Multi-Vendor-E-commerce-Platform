@@ -1,5 +1,7 @@
 package shopstack_backend.entity;
 
+import java.math.BigDecimal;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -25,13 +27,13 @@ public class OrderItem {
     private String productName;
 
     @Column(nullable = false)
-    private Double priceAtPurchase;
+    private BigDecimal priceAtPurchase;
 
     @Column(nullable = false)
     private Integer quantity;
 
     @Column(nullable = false)
-    private Double lineTotal;
+    private BigDecimal lineTotal;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -71,12 +73,12 @@ public class OrderItem {
         this.productName = productName;
     }
 
-    public Double getPriceAtPurchase() {
+    public BigDecimal getPriceAtPurchase() {
         return priceAtPurchase;
     }
 
-    public void setPriceAtPurchase(Double priceAtPurchase) {
-        this.priceAtPurchase = priceAtPurchase;
+    public void setPriceAtPurchase(BigDecimal finalPrice) {
+        this.priceAtPurchase = finalPrice;
     }
 
     public Integer getQuantity() {
@@ -87,12 +89,12 @@ public class OrderItem {
         this.quantity = quantity;
     }
 
-    public Double getLineTotal() {
+    public BigDecimal getLineTotal() {
         return lineTotal;
     }
 
-    public void setLineTotal(Double lineTotal) {
-        this.lineTotal = lineTotal;
+    public void setLineTotal(BigDecimal lineTotal2) {
+        this.lineTotal = lineTotal2;
     }
 
     public OrderStatus getStatus() {

@@ -1,5 +1,6 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public class ProductResponseDTO {
@@ -12,11 +13,11 @@ public class ProductResponseDTO {
 
     private String description;
 
-    private double price;
+    private BigDecimal price;
 
     private double discountPercentage;
 
-    private double finalPrice;
+    private BigDecimal finalPrice;
 
     private int stock;
 
@@ -68,11 +69,11 @@ public class ProductResponseDTO {
     }
 
 
-    public double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 
@@ -86,11 +87,11 @@ public class ProductResponseDTO {
     }
 
 
-    public double getFinalPrice() {
+    public BigDecimal getFinalPrice() {
         return finalPrice;
     }
 
-    public void setFinalPrice(double finalPrice) {
+    public void setFinalPrice(BigDecimal finalPrice) {
         this.finalPrice = finalPrice;
     }
 

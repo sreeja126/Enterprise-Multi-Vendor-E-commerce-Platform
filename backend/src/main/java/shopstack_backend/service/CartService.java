@@ -15,6 +15,8 @@ import shopstack_backend.repository.CartRepository;
 import shopstack_backend.repository.ProductRepository;
 import shopstack_backend.repository.UserRepository;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,41 +35,60 @@ public class CartService {
     @Autowired
     private UserRepository userRepository;
 
-    // Get the logged-in customer's cart, creating an empty one if this is
-    // their first time adding anything.
+    // Get the logged-in customer's cart, creating an empty one if this
+    // is their first time adding anything.
     @Transactional
     public Cart getOrCreateCart(String email) {
+
         return cartRepository.findByUserEmail(email)
                 .orElseGet(() -> {
+
                     User user = userRepository.findByEmail(email)
-                            .orElseThrow(() -> new RuntimeException("User not found"));
+                            .orElseThrow(() ->
+                                    new RuntimeException("User not found"));
+
                     Cart cart = new Cart();
                     cart.setUser(user);
+
                     return cartRepository.save(cart);
                 });
     }
 
     @Transactional(readOnly = true)
     public CartResponseDTO getCart(String email) {
-        Cart cart = cartRepository.findByUserEmail(email).orElse(null);
+
+        Cart cart = cartRepository.findByUserEmail(email)
+                .orElse(null);
+
         if (cart == null) {
             return emptyCartResponse();
         }
+
         return mapToDTO(cart);
     }
 
     @Transactional
-    public CartResponseDTO addItem(String email, Long productId, Integer quantity) {
+    public CartResponseDTO addItem(
+            String email,
+            Long productId,
+            Integer quantity) {
+
         if (quantity == null || quantity <= 0) {
-            throw new IllegalArgumentException("Quantity must be greater than zero.");
+            throw new IllegalArgumentException(
+                    "Quantity must be greater than zero.");
         }
 
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Product not found"));
 
-        int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+        int available = product.getStockQuantity() != null
+                ? product.getStockQuantity()
+                : 0;
+
         if (available <= 0) {
-            throw new IllegalStateException("This product is out of stock.");
+            throw new IllegalStateException(
+                    "This product is out of stock.");
         }
 
         Cart cart = getOrCreateCart(email);
@@ -76,63 +97,100 @@ public class CartService {
                 .findByCartIdAndProductId(cart.getId(), productId)
                 .orElse(null);
 
-        int requestedTotal = quantity + (item != null ? item.getQuantity() : 0);
+        int requestedTotal =
+                quantity + (item != null ? item.getQuantity() : 0);
+
         if (requestedTotal > available) {
             throw new IllegalStateException(
-                    "Only " + available + " unit(s) of \"" + product.getName() + "\" available.");
+                    "Only " + available +
+                    " unit(s) of \"" +
+                    product.getName() +
+                    "\" available."
+            );
         }
 
         if (item != null) {
+
             item.setQuantity(requestedTotal);
+
         } else {
+
             item = new CartItem();
             item.setCart(cart);
             item.setProduct(product);
             item.setQuantity(quantity);
+
             cart.getItems().add(item);
         }
 
         cartItemRepository.save(item);
 
-        return mapToDTO(cartRepository.findByUserEmail(email).orElseThrow());
+        return mapToDTO(
+                cartRepository.findByUserEmail(email)
+                        .orElseThrow()
+        );
     }
 
     @Transactional
-    public CartResponseDTO updateItemQuantity(String email, Long itemId, Integer quantity) {
+    public CartResponseDTO updateItemQuantity(
+            String email,
+            Long itemId,
+            Integer quantity) {
+
         if (quantity == null || quantity <= 0) {
-            throw new IllegalArgumentException("Quantity must be greater than zero.");
+            throw new IllegalArgumentException(
+                    "Quantity must be greater than zero.");
         }
 
-        CartItem item = cartItemRepository.findByIdAndCartUserEmail(itemId, email)
-                .orElseThrow(() -> new SecurityException("Cart item not found for this account."));
+        CartItem item = cartItemRepository
+                .findByIdAndCartUserEmail(itemId, email)
+                .orElseThrow(() ->
+                        new SecurityException(
+                                "Cart item not found for this account."
+                        ));
 
-        int available = item.getProduct().getStockQuantity() != null
-                ? item.getProduct().getStockQuantity() : 0;
+        Product product = item.getProduct();
+
+        int available = product.getStockQuantity() != null
+                ? product.getStockQuantity()
+                : 0;
 
         if (quantity > available) {
             throw new IllegalStateException(
-                    "Only " + available + " unit(s) of \"" + item.getProduct().getName() + "\" available.");
+                    "Only " + available +
+                    " unit(s) of \"" +
+                    product.getName() +
+                    "\" available."
+            );
         }
 
         item.setQuantity(quantity);
+
         cartItemRepository.save(item);
 
-        return mapToDTO(cartRepository.findByUserEmail(email).orElseThrow());
+        return mapToDTO(
+                cartRepository.findByUserEmail(email)
+                        .orElseThrow()
+        );
     }
 
     @Transactional
-    public CartResponseDTO removeItem(String email, Long itemId) {
-        CartItem item = cartItemRepository.findByIdAndCartUserEmail(itemId, email)
-                .orElseThrow(() -> new SecurityException("Cart item not found for this account."));
+    public CartResponseDTO removeItem(
+            String email,
+            Long itemId) {
+
+        CartItem item = cartItemRepository
+                .findByIdAndCartUserEmail(itemId, email)
+                .orElseThrow(() ->
+                        new SecurityException(
+                                "Cart item not found for this account."
+                        ));
 
         Cart cart = item.getCart();
 
-        // Keep the in-memory collection in sync explicitly, rather than
-        // relying on a fresh repository query to correctly reflect the
-        // delete — Hibernate's first-level session cache can otherwise
-        // return the same managed Cart instance with a stale already-loaded
-        // items collection that still shows the item as present.
+        // Keep the in-memory collection synchronized.
         cart.getItems().remove(item);
+
         cartItemRepository.delete(item);
         cartItemRepository.flush();
 
@@ -141,61 +199,142 @@ public class CartService {
 
     @Transactional
     public CartResponseDTO clearCart(String email) {
-        Cart cart = cartRepository.findByUserEmail(email).orElse(null);
+
+        Cart cart = cartRepository
+                .findByUserEmail(email)
+                .orElse(null);
+
         if (cart != null) {
             cart.getItems().clear();
             cartRepository.save(cart);
         }
+
         return emptyCartResponse();
     }
 
     private CartResponseDTO mapToDTO(Cart cart) {
+
         CartResponseDTO dto = new CartResponseDTO();
+
         dto.setCartId(cart.getId());
 
-        List<CartItemResponseDTO> itemDTOs = new ArrayList<>();
-        double total = 0;
+        List<CartItemResponseDTO> itemDTOs =
+                new ArrayList<>();
+
+        // Use BigDecimal for all money calculations.
+        BigDecimal total = BigDecimal.ZERO;
 
         for (CartItem item : cart.getItems()) {
+
             Product product = item.getProduct();
-            if (product == null) continue;
 
-            CartItemResponseDTO itemDto = new CartItemResponseDTO();
+            if (product == null) {
+                continue;
+            }
+
+            CartItemResponseDTO itemDto =
+                    new CartItemResponseDTO();
+
             itemDto.setId(item.getId());
-            itemDto.setProductId(product.getId());
-            itemDto.setProductName(product.getName());
-            itemDto.setImageUrl(product.getImageUrl());
-            itemDto.setPrice(product.getPrice() != null ? product.getPrice() : 0.0);
-            itemDto.setDiscountPercentage(product.getDiscountPercentage());
 
-            // The whole point of this module: cart pricing always uses
-            // finalPrice (post-discount), never the raw price.
-            double finalPrice = product.getFinalPrice();
+            itemDto.setProductId(product.getId());
+
+            itemDto.setProductName(product.getName());
+
+            itemDto.setImageUrl(product.getImageUrl());
+
+            // Original product price
+            itemDto.setPrice(
+                    product.getPrice() != null
+                            ? product.getPrice()
+                            : BigDecimal.ZERO
+            );
+
+            // Discount percentage
+            itemDto.setDiscountPercentage(
+                    product.getDiscountPercentage()
+            );
+
+            // Final price after discount
+            BigDecimal finalPrice =
+                    product.getFinalPrice();
+
+            if (finalPrice == null) {
+                finalPrice = BigDecimal.ZERO;
+            }
+
+            finalPrice = finalPrice.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+
             itemDto.setFinalPrice(finalPrice);
 
+            // Quantity
             itemDto.setQuantity(item.getQuantity());
-            itemDto.setAvailableStock(product.getStockQuantity() != null ? product.getStockQuantity() : 0);
 
-            double lineTotal = Math.round(finalPrice * item.getQuantity() * 100.0) / 100.0;
+            // Available stock
+            int availableStock =
+                    product.getStockQuantity() != null
+                            ? product.getStockQuantity()
+                            : 0;
+
+            itemDto.setAvailableStock(availableStock);
+
+            // -------------------------------------------------
+            // BigDecimal line total
+            // finalPrice × quantity
+            // -------------------------------------------------
+
+            BigDecimal lineTotal =
+                    finalPrice.multiply(
+                            BigDecimal.valueOf(item.getQuantity())
+                    ).setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    );
+
             itemDto.setLineTotal(lineTotal);
 
-            total += lineTotal;
+            // Add to cart total
+            total = total.add(lineTotal);
+
             itemDTOs.add(itemDto);
         }
 
         dto.setItems(itemDTOs);
-        dto.setTotalAmount(Math.round(total * 100.0) / 100.0);
-        dto.setTotalItems(itemDTOs.stream().mapToInt(CartItemResponseDTO::getQuantity).sum());
+
+        dto.setTotalAmount(
+                total.setScale( 2, RoundingMode.HALF_UP ));
+
+        dto.setTotalItems(
+                itemDTOs.stream()
+                        .mapToInt(
+                                CartItemResponseDTO::getQuantity
+                        )
+                        .sum()
+        );
 
         return dto;
     }
 
+    // ---------------------------------------------------------
+    // Empty cart response
+    // ---------------------------------------------------------
+
     private CartResponseDTO emptyCartResponse() {
-        CartResponseDTO dto = new CartResponseDTO();
+
+        CartResponseDTO dto =
+                new CartResponseDTO();
+
         dto.setCartId(null);
+
         dto.setItems(new ArrayList<>());
-        dto.setTotalAmount(0);
+
+        dto.setTotalAmount(BigDecimal.ZERO);
+
         dto.setTotalItems(0);
+
         return dto;
     }
 }

@@ -5,6 +5,9 @@ import shopstack_backend.entity.OrderItem;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.math.BigDecimal;
 
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
@@ -20,4 +23,10 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     // Ownership check for customer-initiated cancellation: this item must
     // belong to an order actually placed by this customer.
     Optional<OrderItem> findByIdAndOrder_User_Email(Long id, String email);
+    @Query("""
+    SELECT COALESCE(SUM(oi.lineTotal), 0)
+    FROM OrderItem oi
+    WHERE oi.product.vendor.id = :vendorId
+""")
+BigDecimal calculateVendorSales(@Param("vendorId") Long vendorId);
 }

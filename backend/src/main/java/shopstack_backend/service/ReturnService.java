@@ -11,7 +11,7 @@ import shopstack_backend.repository.OrderItemRepository;
 import shopstack_backend.repository.ProductRepository;
 import shopstack_backend.repository.RefundRepository;
 import shopstack_backend.repository.ReturnRequestRepository;
-
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -33,6 +33,9 @@ public class ReturnService {
 
     @Autowired
     private RefundService refundService;
+
+    @Autowired(required = false)
+    private ProductService productService;
 
     // Customer requests a return — only allowed once an item has actually
     // been DELIVERED (before that, cancellation is the right tool), and
@@ -110,6 +113,9 @@ public class ReturnService {
             int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
             product.setStockQuantity(currentStock + item.getQuantity());
             productRepository.save(product);
+            if (productService != null) {
+                productService.recordStockChange(product, currentStock, product.getStockQuantity(), "Return Approved");
+            }
         }
 
         item.setStatus(OrderStatus.RETURNED);

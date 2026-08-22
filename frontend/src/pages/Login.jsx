@@ -53,12 +53,14 @@ function Login() {
 
       // 4. Navigate based on role
       if (data.role === "VENDOR") {
-        navigate("/vendor-dashboard");
-      } else if (data.role === "CUSTOMER") {
-        navigate("/customer-dashboard");
-      } else {
-        navigate("/");
-      }
+  navigate("/vendor-dashboard");
+} else if (data.role === "CUSTOMER") {
+  navigate("/customer-dashboard");
+} else if (data.role === "ADMINISTRATOR") {
+  navigate("/admin/dashboard");
+} else {
+  navigate("/");
+}
 
     } catch (error) {
       console.error("Login error:", error);

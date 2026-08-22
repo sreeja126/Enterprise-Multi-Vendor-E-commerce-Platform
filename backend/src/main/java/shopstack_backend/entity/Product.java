@@ -1,5 +1,8 @@
 package shopstack_backend.entity;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -17,27 +20,30 @@ public class Product {
     @Column(length = 1000)
     private String description;
 
-    private Double price;
+    // Money should use BigDecimal
+    @Column(precision = 12, scale = 2)
+    private BigDecimal price;
 
     @Column(name = "stock_quantity")
     private Integer stockQuantity;
 
     private String imageUrl;
 
-    // Percentage off, 0-100. Null/0 means no discount is active.
-    @Column(name = "discount_percentage")
+    // Percentage off, 0-100.
+    // Null/0 means no discount is active.
     private Double discountPercentage;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
-    // Added missing vendor property mapped by Vendor.java
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
     private Vendor vendor;
 
-    public Product() {}
+    public Product() {
+    }
+
 
     public Long getId() {
         return id;
@@ -47,6 +53,8 @@ public class Product {
         this.id = id;
     }
 
+   
+
     public String getName() {
         return name;
     }
@@ -54,6 +62,8 @@ public class Product {
     public void setName(String name) {
         this.name = name;
     }
+
+   
 
     public String getBrand() {
         return brand;
@@ -63,6 +73,8 @@ public class Product {
         this.brand = brand;
     }
 
+  
+
     public String getDescription() {
         return description;
     }
@@ -71,13 +83,16 @@ public class Product {
         this.description = description;
     }
 
-    public Double getPrice() {
+  
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(Double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
+
+  
 
     public Integer getStockQuantity() {
         return stockQuantity != null ? stockQuantity : 0;
@@ -95,27 +110,60 @@ public class Product {
         this.imageUrl = imageUrl;
     }
 
+
+
     public Double getDiscountPercentage() {
-        return discountPercentage != null ? discountPercentage : 0.0;
+        return discountPercentage != null
+                ? discountPercentage
+                : 0.0;
     }
 
     public void setDiscountPercentage(Double discountPercentage) {
         this.discountPercentage = discountPercentage;
     }
 
-    // The price the customer actually pays. Computed, not stored — so it's
-    // always consistent with price/discountPercentage and can never drift
-    // out of sync in the database.
-    public Double getFinalPrice() {
+    public BigDecimal getFinalPrice() {
+
         if (price == null) {
-            return 0.0;
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        double discount = getDiscountPercentage();
-        if (discount <= 0) {
-            return price;
+
+        BigDecimal basePrice = price.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+
+        BigDecimal discount = BigDecimal.valueOf(
+                getDiscountPercentage()
+        );
+
+        // No discount
+        if (discount.compareTo(BigDecimal.ZERO) <= 0) {
+            return basePrice;
         }
-        double final_ = price - (price * discount / 100.0);
-        return Math.round(final_ * 100.0) / 100.0;
+
+        // 100% or more discount
+        if (discount.compareTo(BigDecimal.valueOf(100)) >= 0) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        BigDecimal discountAmount = basePrice
+                .multiply(discount)
+                .divide(
+                        BigDecimal.valueOf(100),
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        return basePrice
+                .subtract(discountAmount)
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
     }
 
     public Category getCategory() {

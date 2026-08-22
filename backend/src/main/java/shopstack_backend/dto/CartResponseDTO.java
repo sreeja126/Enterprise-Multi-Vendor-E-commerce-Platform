@@ -1,12 +1,13 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public class CartResponseDTO {
 
     private Long cartId;
     private List<CartItemResponseDTO> items;
-    private double totalAmount;
+    private BigDecimal totalAmount;
     private int totalItems;
 
     public CartResponseDTO() {}
@@ -27,11 +28,11 @@ public class CartResponseDTO {
         this.items = items;
     }
 
-    public double getTotalAmount() {
+    public BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
-    public void setTotalAmount(double totalAmount) {
+    public void setTotalAmount(BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
     }
 

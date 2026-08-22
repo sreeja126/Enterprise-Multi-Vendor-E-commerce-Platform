@@ -1,10 +1,11 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class RefundResponseDTO {
 
-    private Double amount;
+    private BigDecimal amount;
     private String method;
     private String status;
     private String gatewayRefundId;
@@ -13,8 +14,8 @@ public class RefundResponseDTO {
 
     public RefundResponseDTO() {}
 
-    public Double getAmount() { return amount; }
-    public void setAmount(Double amount) { this.amount = amount; }
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
 
     public String getMethod() { return method; }
     public void setMethod(String method) { this.method = method; }

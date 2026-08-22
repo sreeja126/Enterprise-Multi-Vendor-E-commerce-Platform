@@ -50,13 +50,7 @@ public class AuthService {
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRole(request.getRole());
-
         userRepository.save(user);
-
-        // Auto-create the matching Vendor profile so a newly registered
-        // vendor can list products immediately, without a separate
-        // onboarding step. Without this, addProduct() fails with
-        // "No vendor profile found for this account" on their very first try.
         if (request.getRole() == Role.VENDOR && vendorRepository != null) {
             Vendor vendor = new Vendor();
             vendor.setName(user.getFullName());
@@ -65,10 +59,8 @@ public class AuthService {
             vendor.setUser(user);
             vendorRepository.save(vendor);
         }
-
         return "Registration Successful";
     }
-
     // Login
     public AuthResponse login(LoginRequest request) {
 
@@ -88,14 +80,6 @@ public class AuthService {
 
         return new AuthResponse(token, user.getRole().name(), "Login Successful");
     }
-
-    // Forgot Password
-    // IMPORTANT: this always returns the same generic message whether or
-    // not the email exists — that's intentional. If we returned a
-    // different message for "email not found" vs "email sent", anyone
-    // could use this endpoint to check which emails are registered
-    // (account enumeration). The email only actually goes out if the
-    // address matches a real account.
     public String forgotPassword(String email) {
 
         Optional<User> optionalUser = userRepository.findByEmail(email);
@@ -103,9 +87,6 @@ public class AuthService {
         if (optionalUser.isPresent()) {
 
             User user = optionalUser.get();
-
-            // Remove any previous unused token for this user so old
-            // links stop working once a new one is requested.
             passwordResetTokenRepository.deleteByUser(user);
 
             String token = UUID.randomUUID().toString();
@@ -117,22 +98,12 @@ public class AuthService {
             );
 
             passwordResetTokenRepository.save(resetToken);
-
-            // Dev convenience: print the reset link to the console too, so
-            // this is testable with dummy/duplicate-style emails that
-            // don't have a real inbox behind them. Remove this log line
-            // before deploying anywhere real — it defeats the point of
-            // emailing the link privately in the first place.
             System.out.println("PASSWORD RESET LINK for " + user.getEmail() +
                     ": http://localhost:5173/reset-password?token=" + token);
 
             try {
                 emailService.sendPasswordResetEmail(user.getEmail(), token);
             } catch (Exception e) {
-                // Sending can fail outright for malformed/fake test domains
-                // (rather than silently bouncing later). Don't let that
-                // break the response or leak which emails are real —
-                // the console log above still lets you test the flow.
                 System.err.println("Failed to send reset email to " + user.getEmail() + ": " + e.getMessage());
             }
         }

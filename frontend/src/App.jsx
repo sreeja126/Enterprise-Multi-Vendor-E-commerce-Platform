@@ -1,66 +1,224 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
+// Components
 import Navbar from "./components/Navbar";
+import AdminNavbar from "./components/AdminNavbar";
+import AdminLayout from "./components/AdminLayout";
+
+// Authentication
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Profile from "./pages/Profile";
-import EditProfile from "./pages/EditProfile";
-import AddProduct from "./pages/AddProduct";
-import ProductList from "./pages/ProductList";
-import ProductDetails from "./pages/ProductDetails";
-import EditProduct from "./pages/EditProduct";
-import MyProducts from "./pages/MyProducts";
-import VendorDashboard from "./pages/VendorDashboard";
-import CustomerDashboard from "./pages/CustomerDashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+
+// Profile
+import Profile from "./pages/Profile";
+import EditProfile from "./pages/EditProfile";
+
+// Customer
+import CustomerDashboard from "./pages/CustomerDashboard";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/CheckOut";
 import OrderHistory from "./pages/OrderHistory";
 import OrderDetails from "./pages/OrderDetails";
 import Wishlist from "./pages/Wishlist";
+
+// Vendor
+import VendorDashboard from "./pages/VendorDashboard";
+import AddProduct from "./pages/AddProduct";
+import ProductList from "./pages/ProductList";
+import ProductDetails from "./pages/ProductDetails";
+import EditProduct from "./pages/EditProduct";
+import MyProducts from "./pages/MyProducts";
 import VendorOrders from "./pages/VendorOrders";
 import VendorReturns from "./pages/VendorReturns";
+
+// Admin
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminVendors from "./pages/admin/AdminVendors";
+import AdminOrders from "./pages/admin/AdminOrders";
+import AdminCommissions from "./pages/admin/AdminCommissions";
+import AdminSystem from "./pages/admin/AdminSystem";
+import AdminReports from "./pages/admin/AdminReports";
+
+// Route Protection
+import ProtectedRoute from "./routes/ProtectedRoute";
+
 
 function App() {
   return (
     <BrowserRouter>
-      <Navbar />
-      <Routes>
-        {/* Default Landing Page Redirect */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
 
-        {/* Dashboards */}
-        <Route path="/vendor-dashboard" element={<VendorDashboard />} />
+      <Routes>
+        <Route path="/"  element={<Navigate to="/login" replace />}/>
+        <Route element={<NavbarLayout />}>
+          <Route path="/login"  element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />}/>
+
         <Route path="/customer-dashboard" element={<CustomerDashboard />} />
 
-        {/* Authentication Routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/profile" element={<Profile />}/>
 
-        {/* Profile Management */}
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/editprofile" element={<EditProfile />} />
+          <Route path="/editprofile"element={<EditProfile />}/>
 
-        {/* Product & Catalog Routes */}
-        <Route path="/products" element={<ProductList />} />
-        <Route path="/products/:id" element={<ProductDetails />} />
-        <Route path="/addproduct" element={<AddProduct />} />
-        <Route path="/products/edit/:id" element={<EditProduct />} />
-        <Route path="/myproducts" element={<MyProducts />} />
+          {/* Products */}
 
-        {/* Shopping & Order Routes */}
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/orders" element={<OrderHistory />} />
-        <Route path="/orders/:id" element={<OrderDetails />} />
-        <Route path="/vendor-orders" element={<VendorOrders />} />
-        <Route path="/vendor-returns" element={<VendorReturns />} />
-        <Route path="/wishlist" element={<Wishlist />} />
+          <Route
+            path="/products"
+            element={<ProductList />}
+          />
+
+          <Route
+            path="/products/:id"
+            element={<ProductDetails />}
+          />
+
+          {/* Shopping */}
+
+          <Route
+            path="/cart"
+            element={<Cart />}
+          />
+
+          <Route
+            path="/checkout"
+            element={<Checkout />}
+          />
+
+          <Route
+            path="/orders"
+            element={<OrderHistory />}
+          />
+
+          <Route
+            path="/orders/:id"
+            element={<OrderDetails />}
+          />
+
+          <Route
+            path="/wishlist"
+            element={<Wishlist />}
+          />
+
+          {/* Vendor */}
+
+          <Route
+            path="/vendor-dashboard"
+            element={<VendorDashboard />}
+          />
+
+          <Route
+            path="/addproduct"
+            element={<AddProduct />}
+          />
+
+          <Route
+            path="/products/edit/:id"
+            element={<EditProduct />}
+          />
+
+          <Route
+            path="/myproducts"
+            element={<MyProducts />}
+          />
+
+          <Route
+            path="/vendor-orders"
+            element={<VendorOrders />}
+          />
+
+          <Route
+            path="/vendor-returns"
+            element={<VendorReturns />}
+          />
+
+        </Route>
+
+
+        {/* =====================================================
+            ADMIN ROUTES
+            ===================================================== */}
+
+        <Route
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "ADMINISTRATOR",
+                "ROLE_ADMINISTRATOR"
+              ]}
+            >
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+
+          {/* Admin Dashboard */}
+
+          <Route
+            path="/admin/dashboard"
+            element={<AdminDashboard />}
+          />
+
+          {/* Vendor Management */}
+
+          <Route
+            path="/admin/vendor"
+            element={<AdminVendors />}
+          />
+
+          {/* Order Monitoring */}
+
+          <Route
+            path="/admin/order"
+            element={<AdminOrders />}
+          />
+
+          {/* Commission Management */}
+
+          <Route
+            path="/admin/commission"
+            element={<AdminCommissions />}
+          />
+
+          {/* System Monitoring */}
+
+          <Route
+            path="/admin/system"
+            element={<AdminSystem />}
+          />
+
+          {/* Business Reports */}
+
+          <Route
+            path="/admin/report"
+            element={<AdminReports />}
+          />
+
+        </Route>
+        <Route path="*" element={<Navigate to="/login" replace />} />
+
       </Routes>
+
     </BrowserRouter>
   );
 }
+
+
+import { Outlet } from "react-router-dom";
+
+const NavbarLayout = () => {
+  return (
+    <>
+      <Navbar />
+
+      <main>
+        <Outlet />
+      </main>
+    </>
+  );
+};
+
 
 export default App;
