@@ -1,13 +1,15 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
+
 public class OrderItemResponseDTO {
 
     private Long id;
     private Long productId;
     private String productName;
-    private Double priceAtPurchase;
+    private BigDecimal priceAtPurchase;
     private Integer quantity;
-    private Double lineTotal;
+    private BigDecimal lineTotal;
     private String status;
     private RefundResponseDTO refund; // null unless this item was actually refunded
 
@@ -37,11 +39,11 @@ public class OrderItemResponseDTO {
         this.productName = productName;
     }
 
-    public Double getPriceAtPurchase() {
+    public BigDecimal getPriceAtPurchase() {
         return priceAtPurchase;
     }
 
-    public void setPriceAtPurchase(Double priceAtPurchase) {
+    public void setPriceAtPurchase(BigDecimal priceAtPurchase) {
         this.priceAtPurchase = priceAtPurchase;
     }
 
@@ -53,11 +55,11 @@ public class OrderItemResponseDTO {
         this.quantity = quantity;
     }
 
-    public Double getLineTotal() {
+    public BigDecimal getLineTotal() {
         return lineTotal;
     }
 
-    public void setLineTotal(Double lineTotal) {
+    public void setLineTotal(BigDecimal lineTotal) {
         this.lineTotal = lineTotal;
     }
 

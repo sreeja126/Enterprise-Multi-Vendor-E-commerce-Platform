@@ -1,5 +1,6 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class WishlistItemResponseDTO {
@@ -8,9 +9,9 @@ public class WishlistItemResponseDTO {
     private Long productId;
     private String productName;
     private String imageUrl;
-    private double price;
+    private BigDecimal price;
     private double discountPercentage;
-    private double finalPrice;
+    private BigDecimal finalPrice;
     private boolean inStock;
     private LocalDateTime addedAt;
 
@@ -48,11 +49,11 @@ public class WishlistItemResponseDTO {
         this.imageUrl = imageUrl;
     }
 
-    public double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 
@@ -64,11 +65,11 @@ public class WishlistItemResponseDTO {
         this.discountPercentage = discountPercentage;
     }
 
-    public double getFinalPrice() {
+    public BigDecimal getFinalPrice() {
         return finalPrice;
     }
 
-    public void setFinalPrice(double finalPrice) {
+    public void setFinalPrice(BigDecimal finalPrice) {
         this.finalPrice = finalPrice;
     }
 

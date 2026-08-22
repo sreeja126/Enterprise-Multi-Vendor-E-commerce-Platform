@@ -1,6 +1,8 @@
 package shopstack_backend.entity;
 
 import jakarta.persistence.*;
+
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -16,7 +18,7 @@ public class Refund {
     private OrderItem orderItem;
 
     @Column(nullable = false)
-    private Double amount;
+    private BigDecimal amount;
 
     // "RAZORPAY" (real gateway refund) or "COD"/"MANUAL" (tracked only,
     // no gateway call — nothing was ever charged online to reverse).
@@ -46,8 +48,8 @@ public class Refund {
     public OrderItem getOrderItem() { return orderItem; }
     public void setOrderItem(OrderItem orderItem) { this.orderItem = orderItem; }
 
-    public Double getAmount() { return amount; }
-    public void setAmount(Double amount) { this.amount = amount; }
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
 
     public String getMethod() { return method; }
     public void setMethod(String method) { this.method = method; }

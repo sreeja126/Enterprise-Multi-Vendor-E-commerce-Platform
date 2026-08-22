@@ -1,5 +1,6 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class PaymentResponseDTO {
@@ -7,7 +8,7 @@ public class PaymentResponseDTO {
     private String method;
     private String status;
     private String transactionId;
-    private Double amount;
+    private BigDecimal amount;
     private LocalDateTime paidAt;
 
     public PaymentResponseDTO() {}
@@ -36,11 +37,11 @@ public class PaymentResponseDTO {
         this.transactionId = transactionId;
     }
 
-    public Double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
-    public void setAmount(Double amount) {
+    public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 

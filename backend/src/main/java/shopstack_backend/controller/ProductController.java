@@ -1,7 +1,9 @@
 package shopstack_backend.controller;
 
+import shopstack_backend.dto.InventoryReportResponseDTO;
 import shopstack_backend.dto.ProductRequestDTO;
 import shopstack_backend.dto.ProductResponseDTO;
+import shopstack_backend.dto.StockHistoryResponseDTO;
 import shopstack_backend.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -32,6 +34,32 @@ public class ProductController {
     public ResponseEntity<?> getMyProducts(Authentication authentication) {
         try {
             return ResponseEntity.ok(productService.getMyProducts(authentication.getName()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // This vendor's products at or below the low-stock threshold.
+    @GetMapping("/vendor/low-stock")
+    public ResponseEntity<List<ProductResponseDTO>> getLowStockProducts(Authentication authentication) {
+        return ResponseEntity.ok(productService.getLowStockProducts(authentication.getName()));
+    }
+
+    // Aggregate inventory stats for this vendor — total units, stock
+    // value, out-of-stock/low-stock counts.
+    @GetMapping("/vendor/inventory-report")
+    public ResponseEntity<InventoryReportResponseDTO> getInventoryReport(Authentication authentication) {
+        return ResponseEntity.ok(productService.getInventoryReport(authentication.getName()));
+    }
+
+    // Full stock-change audit trail for one product — vendor-ownership
+    // checked, same as every other product mutation.
+    @GetMapping("/{id}/stock-history")
+    public ResponseEntity<?> getStockHistory(@PathVariable Long id, Authentication authentication) {
+        try {
+            return ResponseEntity.ok(productService.getStockHistory(id, authentication.getName()));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

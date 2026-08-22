@@ -1,5 +1,6 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -8,7 +9,7 @@ public class OrderResponseDTO {
     private Long id;
     private Integer customerOrderNumber;
     private String status;
-    private Double totalAmount;
+    private BigDecimal totalAmount;
     private LocalDateTime createdAt;
     private List<OrderItemResponseDTO> items;
     private PaymentResponseDTO payment;
@@ -49,11 +50,11 @@ public class OrderResponseDTO {
         this.status = status;
     }
 
-    public Double getTotalAmount() {
+    public BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
-    public void setTotalAmount(Double totalAmount) {
+    public void setTotalAmount(BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
     }
 

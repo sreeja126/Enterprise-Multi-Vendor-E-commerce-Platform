@@ -1,21 +1,19 @@
 package shopstack_backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class VendorOrderItemResponseDTO {
 
-    private Long id;              // order item id — target of the status update
+    private Long id;            
     private Long orderId;
     private LocalDateTime orderCreatedAt;
 
     private String productName;
-    private Double priceAtPurchase;
+    private BigDecimal priceAtPurchase;
     private Integer quantity;
-    private Double lineTotal;
+    private BigDecimal lineTotal;
     private String status;
-
-    // Enough shipping info for the vendor to actually fulfill the item,
-    // without exposing the customer's full account details.
     private String shippingFullName;
     private String shippingPhone;
     private String shippingAddressLine1;
@@ -39,14 +37,14 @@ public class VendorOrderItemResponseDTO {
     public String getProductName() { return productName; }
     public void setProductName(String productName) { this.productName = productName; }
 
-    public Double getPriceAtPurchase() { return priceAtPurchase; }
-    public void setPriceAtPurchase(Double priceAtPurchase) { this.priceAtPurchase = priceAtPurchase; }
+    public BigDecimal getPriceAtPurchase() { return priceAtPurchase; }
+    public void setPriceAtPurchase(BigDecimal priceAtPurchase) { this.priceAtPurchase = priceAtPurchase; }
 
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
 
-    public Double getLineTotal() { return lineTotal; }
-    public void setLineTotal(Double lineTotal) { this.lineTotal = lineTotal; }
+    public BigDecimal getLineTotal() { return lineTotal; }
+    public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
