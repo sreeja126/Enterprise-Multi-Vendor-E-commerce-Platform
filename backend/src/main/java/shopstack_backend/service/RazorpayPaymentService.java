@@ -34,13 +34,16 @@ public class RazorpayPaymentService {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private CouponService couponService;
+
     @Value("${razorpay.key.id}")
     private String keyId;
 
     @Value("${razorpay.key.secret}")
     private String keySecret;
 
-    public RazorpayOrderResponseDTO createRazorpayOrder(String email) throws Exception {
+    public RazorpayOrderResponseDTO createRazorpayOrder(String email, String couponCode) throws Exception {
 
         CartResponseDTO cart = cartService.getCart(email);
 
@@ -49,6 +52,14 @@ public class RazorpayPaymentService {
         }
 
         BigDecimal totalAmount = cart.getTotalAmount();
+
+        // If a coupon code was supplied, charge the discounted amount instead
+        // of the full subtotal. Re-validated (and actually reserved) again
+        // at /payment/verify time, so this is a preview, not a guarantee.
+        if (couponCode != null && !couponCode.isBlank()) {
+            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, totalAmount);
+            totalAmount = totalAmount.subtract(eval.getDiscountAmount()).setScale(2, RoundingMode.HALF_UP);
+        }
 
         long amountInPaise = totalAmount
                 .multiply(BigDecimal.valueOf(100))
@@ -77,7 +88,8 @@ public class RazorpayPaymentService {
     public RazorpayOrderResponseDTO createRazorpayOrderForProduct(
             String email,
             Long productId,
-            Integer quantity
+            Integer quantity,
+            String couponCode
     ) throws Exception {
 
         if (quantity == null || quantity <= 0) {
@@ -104,7 +116,13 @@ public class RazorpayPaymentService {
 
         BigDecimal amount = product
                 .getFinalPrice()
-                .multiply(BigDecimal.valueOf(quantity));
+                .multiply(BigDecimal.valueOf(quantity))
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (couponCode != null && !couponCode.isBlank()) {
+            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, amount);
+            amount = amount.subtract(eval.getDiscountAmount()).setScale(2, RoundingMode.HALF_UP);
+        }
 
         long amountInPaise = amount
                 .multiply(BigDecimal.valueOf(100))
@@ -160,7 +178,8 @@ public class RazorpayPaymentService {
                 email,
                 request.getAddressId(),
                 "RAZORPAY",
-                request.getRazorpayPaymentId()
+                request.getRazorpayPaymentId(),
+                request.getCouponCode()
         );
     }
 
@@ -197,7 +216,8 @@ public class RazorpayPaymentService {
                 request.getQuantity(),
                 "RAZORPAY",
                 request.getRazorpayPaymentId(),
-                shopstack_backend.entity.PaymentStatus.SUCCESS
+                shopstack_backend.entity.PaymentStatus.SUCCESS,
+                request.getCouponCode()
         );
     }
 

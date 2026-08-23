@@ -5,6 +5,7 @@ import shopstack_backend.dto.*;
 import shopstack_backend.entity.CommissionStatus;
 import shopstack_backend.service.AdminService;
 import shopstack_backend.service.CommissionService;
+import shopstack_backend.service.CouponService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +23,9 @@ public class AdminController {
 
     @Autowired
     private CommissionService commissionService;
+
+    @Autowired
+    private CouponService couponService;
 
     @GetMapping("/dashboard/summary")
     public ResponseEntity<AdminDashboardSummaryDTO> getDashboardSummary() {
@@ -65,5 +69,60 @@ public ResponseEntity<List<AdminOrderDTO>> getAllOrders() {
     @GetMapping("/system/status")
     public ResponseEntity<SystemStatusDTO> getSystemStatus() {
         return ResponseEntity.ok(adminService.getSystemStatus());
+    }
+
+    // ---- Coupon management ----
+
+    @PostMapping("/coupons")
+    public ResponseEntity<?> createCoupon(@RequestBody CouponRequestDTO request) {
+        try {
+            return ResponseEntity.ok(couponService.createCoupon(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/coupons/{id}")
+    public ResponseEntity<?> updateCoupon(@PathVariable Long id, @RequestBody CouponRequestDTO request) {
+        try {
+            return ResponseEntity.ok(couponService.updateCoupon(id, request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/coupons/{id}")
+    public ResponseEntity<?> deleteCoupon(@PathVariable Long id) {
+        try {
+            couponService.deleteCoupon(id);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/coupons/{id}/status")
+    public ResponseEntity<?> setCouponStatus(@PathVariable Long id, @RequestBody java.util.Map<String, Boolean> body) {
+        try {
+            Boolean active = body.get("active");
+            return ResponseEntity.ok(couponService.setActive(id, Boolean.TRUE.equals(active)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/coupons")
+    public ResponseEntity<List<CouponResponseDTO>> getAllCoupons() {
+        return ResponseEntity.ok(couponService.getAllCoupons());
+    }
+
+    @GetMapping("/coupons/analytics")
+    public ResponseEntity<List<CouponAnalyticsDTO>> getCouponAnalytics() {
+        return ResponseEntity.ok(couponService.getAnalytics());
+    }
+
+    @GetMapping("/coupons/usages")
+    public ResponseEntity<List<CouponUsageResponseDTO>> getCouponUsages() {
+        return ResponseEntity.ok(couponService.getAllUsages());
     }
 }

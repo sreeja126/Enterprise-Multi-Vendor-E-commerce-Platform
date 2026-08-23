@@ -8,6 +8,7 @@ public class VerifyBuyNowRequest {
     private Long addressId;
     private Long productId;
     private Integer quantity;
+    private String couponCode; // nullable
 
     public VerifyBuyNowRequest() {}
 
@@ -28,4 +29,7 @@ public class VerifyBuyNowRequest {
 
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+    public String getCouponCode() { return couponCode; }
+    public void setCouponCode(String couponCode) { this.couponCode = couponCode; }
 }

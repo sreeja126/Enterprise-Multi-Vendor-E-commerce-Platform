@@ -23,12 +23,13 @@ public class PaymentController {
 
     // Step 1: create a Razorpay order for the customer's current cart total.
     @PostMapping("/create-order")
-    public ResponseEntity<?> createOrder(Authentication authentication) {
+    public ResponseEntity<?> createOrder(Authentication authentication,
+                                          @RequestParam(required = false) String couponCode) {
         try {
             RazorpayOrderResponseDTO response =
-                    razorpayPaymentService.createRazorpayOrder(authentication.getName());
+                    razorpayPaymentService.createRazorpayOrder(authentication.getName(), couponCode);
             return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -62,7 +63,7 @@ public class PaymentController {
                                                    @RequestBody BuyNowRequest request) {
         try {
             RazorpayOrderResponseDTO response = razorpayPaymentService.createRazorpayOrderForProduct(
-                    authentication.getName(), request.getProductId(), request.getQuantity());
+                    authentication.getName(), request.getProductId(), request.getQuantity(), request.getCouponCode());
             return ResponseEntity.ok(response);
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
