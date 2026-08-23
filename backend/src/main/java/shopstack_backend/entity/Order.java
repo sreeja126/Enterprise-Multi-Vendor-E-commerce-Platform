@@ -25,6 +25,20 @@ public class Order {
     @Column(nullable = false)
     private BigDecimal totalAmount;
 
+    // Pre-discount sum of all (non-cancelled) line items. Null for orders
+    // placed before coupons existed, or wherever no coupon logic applies —
+    // in that case totalAmount alone is both the subtotal and the payable amount.
+    private BigDecimal subtotalAmount;
+
+    // How much a coupon knocked off this order, if any. Defaults to zero
+    // rather than null so DTOs/UI can always safely display it.
+    @Column(nullable = false)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
+
+    // The coupon code that was applied, snapshotted at checkout time so it
+    // still displays correctly even if the coupon is later edited/deleted.
+    private String couponCode;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;
@@ -84,6 +98,30 @@ public class Order {
 
     public void setTotalAmount(BigDecimal lineTotal) {
         this.totalAmount = lineTotal;
+    }
+
+    public BigDecimal getSubtotalAmount() {
+        return subtotalAmount;
+    }
+
+    public void setSubtotalAmount(BigDecimal subtotalAmount) {
+        this.subtotalAmount = subtotalAmount;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
+    }
+
+    public String getCouponCode() {
+        return couponCode;
+    }
+
+    public void setCouponCode(String couponCode) {
+        this.couponCode = couponCode;
     }
 
     public OrderStatus getStatus() {

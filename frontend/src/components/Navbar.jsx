@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { getCart } from "../services/cartService"; // Adjust import path if needed
-
 function Navbar({ cartCount: initialCartCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();

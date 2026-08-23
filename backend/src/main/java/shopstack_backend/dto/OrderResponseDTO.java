@@ -10,6 +10,9 @@ public class OrderResponseDTO {
     private Integer customerOrderNumber;
     private String status;
     private BigDecimal totalAmount;
+    private BigDecimal subtotalAmount;
+    private BigDecimal discountAmount;
+    private String couponCode;
     private LocalDateTime createdAt;
     private List<OrderItemResponseDTO> items;
     private PaymentResponseDTO payment;
@@ -56,6 +59,30 @@ public class OrderResponseDTO {
 
     public void setTotalAmount(BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
+    }
+
+    public BigDecimal getSubtotalAmount() {
+        return subtotalAmount;
+    }
+
+    public void setSubtotalAmount(BigDecimal subtotalAmount) {
+        this.subtotalAmount = subtotalAmount;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
+    }
+
+    public String getCouponCode() {
+        return couponCode;
+    }
+
+    public void setCouponCode(String couponCode) {
+        this.couponCode = couponCode;
     }
 
     public LocalDateTime getCreatedAt() {

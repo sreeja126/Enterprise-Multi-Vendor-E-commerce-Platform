@@ -43,7 +43,8 @@ public class OrderController {
     public ResponseEntity<?> checkoutCod(Authentication authentication,
                                           @RequestBody PlaceCodOrderRequest request) {
         try {
-            OrderResponseDTO order = orderService.placeCodOrder(authentication.getName(), request.getAddressId());
+            OrderResponseDTO order = orderService.placeCodOrder(
+                    authentication.getName(), request.getAddressId(), request.getCouponCode());
             return ResponseEntity.ok(order);
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -58,7 +59,8 @@ public class OrderController {
                                                 @RequestBody BuyNowRequest request) {
         try {
             OrderResponseDTO order = orderService.placeCodBuyNowOrder(
-                    authentication.getName(), request.getAddressId(), request.getProductId(), request.getQuantity());
+                    authentication.getName(), request.getAddressId(), request.getProductId(), request.getQuantity(),
+                    request.getCouponCode());
             return ResponseEntity.ok(order);
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

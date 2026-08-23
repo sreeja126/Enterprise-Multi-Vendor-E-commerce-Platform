@@ -1,35 +1,46 @@
 import api from './api';
-
-export const createRazorpayOrder = async () => {
-  const response = await api.post('/payment/create-order');
+export const createRazorpayOrder = async (couponCode) => {
+  const response = await api.post('/payment/create-order', null, {
+    params: couponCode ? { couponCode } : {},
+  });
   return response.data;
 };
-
-export const verifyPayment = async ({ razorpayOrderId, razorpayPaymentId, razorpaySignature, addressId }) => {
+export const verifyPayment = async ({
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  addressId,
+  couponCode,
+}) => {
   const response = await api.post('/payment/verify', {
     razorpayOrderId,
     razorpayPaymentId,
     razorpaySignature,
     addressId,
+    couponCode,
   });
   return response.data;
 };
-
-// Cash on Delivery — creates a real order directly, no Razorpay involved.
-export const placeCodOrder = async (addressId) => {
-  const response = await api.post('/checkout/cod', { addressId });
+export const placeCodOrder = async (addressId, couponCode) => {
+  const response = await api.post('/checkout/cod', { addressId, couponCode });
   return response.data;
 };
-
-// ---- Buy Now: single-product express checkout, independent of the cart ----
-
-export const createRazorpayOrderForProduct = async (productId, quantity = 1) => {
-  const response = await api.post('/payment/create-order/buy-now', { productId, quantity });
+export const createRazorpayOrderForProduct = async (productId, quantity, couponCode) => {
+  const response = await api.post('/payment/create-order/buy-now', {
+    productId,
+    quantity,
+    couponCode,
+  });
   return response.data;
 };
-
 export const verifyBuyNowPayment = async ({
-  razorpayOrderId, razorpayPaymentId, razorpaySignature, addressId, productId, quantity,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  addressId,
+  productId,
+  quantity,
+  couponCode,
 }) => {
   const response = await api.post('/payment/verify/buy-now', {
     razorpayOrderId,
@@ -38,21 +49,16 @@ export const verifyBuyNowPayment = async ({
     addressId,
     productId,
     quantity,
+    couponCode,
   });
   return response.data;
 };
-
-export const placeCodBuyNowOrder = async (addressId, productId, quantity = 1) => {
-  const response = await api.post('/checkout/cod/buy-now', { addressId, productId, quantity });
+export const placeCodBuyNowOrder = async (addressId, productId, quantity, couponCode) => {
+  const response = await api.post('/checkout/cod/buy-now', {
+    addressId,
+    productId,
+    quantity,
+    couponCode,
+  });
   return response.data;
 };
-
-const paymentService = {
-  createRazorpayOrder,
-  verifyPayment,
-  placeCodOrder,
-  createRazorpayOrderForProduct,
-  verifyBuyNowPayment,
-  placeCodBuyNowOrder,
-};
-export default paymentService;

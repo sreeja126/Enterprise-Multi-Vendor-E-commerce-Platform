@@ -12,7 +12,8 @@ const AdminNavbar = () => {
     { name: 'Orders', path: '/admin/order' },
     { name: 'Commissions', path: '/admin/commission' },
     { name: 'System', path: '/admin/system' },
-    { name: 'Reports', path: '/admin/report' }
+    { name: 'Reports', path: '/admin/report' },
+    {name: 'Coupons', path: '/admin/coupons'}
   ];
 
   const handleLogout = () => {

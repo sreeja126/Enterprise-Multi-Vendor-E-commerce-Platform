@@ -49,6 +49,8 @@ public class OrderService {
     private ProductService productService;
     @Autowired
     private CommissionService commissionService;
+    @Autowired
+    private CouponService couponService;
     private static final List<OrderStatus> PROGRESSION = Arrays.asList(
             OrderStatus.PENDING,
             OrderStatus.CONFIRMED,
@@ -60,7 +62,8 @@ public class OrderService {
             OrderStatus.CANCELLED, OrderStatus.RETURNED, OrderStatus.REFUNDED
     );
     @Transactional
-    public OrderResponseDTO checkout(String email, Long addressId, String paymentMethod, String transactionId) {
+    public OrderResponseDTO checkout(String email, Long addressId, String paymentMethod, String transactionId,
+                                      String couponCode) {
         Cart cart = cartRepository.findByUserEmail(email)
                 .orElseThrow(() -> new IllegalStateException("Your cart is empty."));
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
@@ -117,18 +120,39 @@ BigDecimal lineTotal = finalPrice
             }
         }
         order.setItems(orderItems);
-        order.setTotalAmount(total.setScale(2, java.math.RoundingMode.HALF_UP));
+        total = total.setScale(2, java.math.RoundingMode.HALF_UP);
+
+        CouponService.CouponEvaluationResult couponEval = null;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        if (couponCode != null && !couponCode.isBlank()) {
+            couponEval = couponService.validate(couponCode, total);
+            couponService.reserveUsage(couponEval.getCoupon());
+            discountAmount = couponEval.getDiscountAmount();
+        }
+
+        order.setSubtotalAmount(total);
+        order.setDiscountAmount(discountAmount);
+        order.setCouponCode(couponEval != null ? couponEval.getCoupon().getCode() : null);
+        order.setTotalAmount(total.subtract(discountAmount).setScale(2, java.math.RoundingMode.HALF_UP));
+
         Order saved = orderRepository.save(order);
         Payment payment = recordPayment(saved, paymentMethod, transactionId);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        if (couponEval != null) {
+            couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
+        }
         cart.getItems().clear();
         cartRepository.save(cart);
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
         OrderResponseDTO dto = mapToDTO(saved, payment);
         dto.setCustomerOrderNumber(userOrders.size());
         return dto;
+    }
+    @Transactional
+    public OrderResponseDTO checkout(String email, Long addressId, String paymentMethod, String transactionId) {
+        return checkout(email, addressId, paymentMethod, transactionId, null);
     }
     @Transactional
     public OrderResponseDTO checkout(String email) {
@@ -138,11 +162,11 @@ BigDecimal lineTotal = finalPrice
         return checkout(email, defaultAddress.getId(), "SIMULATED", "TXN-" + UUID.randomUUID());
     }
     @Transactional
-    public OrderResponseDTO placeCodOrder(String email, Long addressId) {
-        return checkoutWithStatus(email, addressId, "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING);
+    public OrderResponseDTO placeCodOrder(String email, Long addressId, String couponCode) {
+        return checkoutWithStatus(email, addressId, "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING, couponCode);
     }
     private OrderResponseDTO checkoutWithStatus(String email, Long addressId, String paymentMethod,
-                                                 String transactionId, PaymentStatus paymentStatus) {
+                                                 String transactionId, PaymentStatus paymentStatus, String couponCode) {
         Cart cart = cartRepository.findByUserEmail(email)
                 .orElseThrow(() -> new IllegalStateException("Your cart is empty."));
         if (cart.getItems() == null || cart.getItems().isEmpty()) {
@@ -199,12 +223,29 @@ BigDecimal lineTotal = finalPrice
             }
         }
         order.setItems(orderItems);
-        order.setTotalAmount(total.setScale(2, java.math.RoundingMode.HALF_UP));
+        total = total.setScale(2, java.math.RoundingMode.HALF_UP);
+
+        CouponService.CouponEvaluationResult couponEval = null;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        if (couponCode != null && !couponCode.isBlank()) {
+            couponEval = couponService.validate(couponCode, total);
+            couponService.reserveUsage(couponEval.getCoupon());
+            discountAmount = couponEval.getDiscountAmount();
+        }
+
+        order.setSubtotalAmount(total);
+        order.setDiscountAmount(discountAmount);
+        order.setCouponCode(couponEval != null ? couponEval.getCoupon().getCode() : null);
+        order.setTotalAmount(total.subtract(discountAmount).setScale(2, java.math.RoundingMode.HALF_UP));
+
         Order saved = orderRepository.save(order);
         Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        if (couponEval != null) {
+            couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
+        }
         cart.getItems().clear();
         cartRepository.save(cart);
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
@@ -214,7 +255,8 @@ BigDecimal lineTotal = finalPrice
     }
     @Transactional
     public OrderResponseDTO checkoutSingleItem(String email, Long addressId, Long productId, Integer quantity,
-                                                String paymentMethod, String transactionId, PaymentStatus paymentStatus) {
+                                                String paymentMethod, String transactionId, PaymentStatus paymentStatus,
+                                                String couponCode) {
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero.");
         }
@@ -254,12 +296,28 @@ BigDecimal lineTotal = finalPrice
         orderItem.setLineTotal(lineTotal);
         orderItem.setStatus(OrderStatus.CONFIRMED);
         order.setItems(new ArrayList<>(List.of(orderItem)));
-        order.setTotalAmount(lineTotal);
+
+        CouponService.CouponEvaluationResult couponEval = null;
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        if (couponCode != null && !couponCode.isBlank()) {
+            couponEval = couponService.validate(couponCode, lineTotal);
+            couponService.reserveUsage(couponEval.getCoupon());
+            discountAmount = couponEval.getDiscountAmount();
+        }
+
+        order.setSubtotalAmount(lineTotal);
+        order.setDiscountAmount(discountAmount);
+        order.setCouponCode(couponEval != null ? couponEval.getCoupon().getCode() : null);
+        order.setTotalAmount(lineTotal.subtract(discountAmount).setScale(2, java.math.RoundingMode.HALF_UP));
+
         Order saved = orderRepository.save(order);
         Payment payment = recordPayment(saved, paymentMethod, transactionId, paymentStatus);
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        if (couponEval != null) {
+            couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
+        }
         product.setStockQuantity(available - quantity);
         productRepository.save(product);
         if (productService != null) {
@@ -269,9 +327,10 @@ BigDecimal lineTotal = finalPrice
         dto.setCustomerOrderNumber(userOrders.size());
         return dto; }
     @Transactional
-    public OrderResponseDTO placeCodBuyNowOrder(String email, Long addressId, Long productId, Integer quantity) {
+    public OrderResponseDTO placeCodBuyNowOrder(String email, Long addressId, Long productId, Integer quantity,
+                                                 String couponCode) {
         return checkoutSingleItem(email, addressId, productId, quantity,
-                "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING);
+                "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING, couponCode);
     }
     private Payment recordPayment(Order order, String method, String transactionId) {
         return recordPayment(order, method, transactionId, PaymentStatus.SUCCESS);
@@ -475,6 +534,9 @@ BigDecimal lineTotal = finalPrice
         dto.setId(order.getId());
         dto.setStatus(order.getStatus().name());
         dto.setTotalAmount(order.getTotalAmount());
+        dto.setSubtotalAmount(order.getSubtotalAmount());
+        dto.setDiscountAmount(order.getDiscountAmount());
+        dto.setCouponCode(order.getCouponCode());
         dto.setCreatedAt(order.getCreatedAt());
         dto.setShippingFullName(order.getShippingFullName());
         dto.setShippingPhone(order.getShippingPhone());

@@ -40,6 +40,7 @@ import AdminOrders from "./pages/admin/AdminOrders";
 import AdminCommissions from "./pages/admin/AdminCommissions";
 import AdminSystem from "./pages/admin/AdminSystem";
 import AdminReports from "./pages/admin/AdminReports";
+import AdminCoupons from "./pages/admin/AdminCoupons";
 
 // Route Protection
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -64,83 +65,58 @@ function App() {
           <Route path="/editprofile"element={<EditProfile />}/>
 
           {/* Products */}
-
           <Route
             path="/products"
             element={<ProductList />}
           />
-
           <Route
             path="/products/:id"
             element={<ProductDetails />}
           />
-
           {/* Shopping */}
-
           <Route
             path="/cart"
             element={<Cart />}
           />
-
           <Route
             path="/checkout"
             element={<Checkout />}
           />
-
           <Route
             path="/orders"
             element={<OrderHistory />}
           />
-
           <Route
             path="/orders/:id"
             element={<OrderDetails />}
           />
-
           <Route
             path="/wishlist"
             element={<Wishlist />}
           />
-
           {/* Vendor */}
-
           <Route
             path="/vendor-dashboard"
             element={<VendorDashboard />}
           />
-
           <Route
             path="/addproduct"
             element={<AddProduct />}
           />
-
           <Route
             path="/products/edit/:id"
             element={<EditProduct />}
           />
-
           <Route
             path="/myproducts"
             element={<MyProducts />}
           />
-
           <Route
             path="/vendor-orders"
             element={<VendorOrders />}
           />
-
-          <Route
-            path="/vendor-returns"
-            element={<VendorReturns />}
-          />
-
+          <Route path="/vendor-returns" element={<VendorReturns />} />
         </Route>
-
-
-        {/* =====================================================
-            ADMIN ROUTES
-            ===================================================== */}
-
         <Route
           element={
             <ProtectedRoute
@@ -156,45 +132,28 @@ function App() {
 
           {/* Admin Dashboard */}
 
-          <Route
-            path="/admin/dashboard"
-            element={<AdminDashboard />}
-          />
+          <Route path="/admin/dashboard" element={<AdminDashboard />}/>
 
           {/* Vendor Management */}
 
-          <Route
-            path="/admin/vendor"
-            element={<AdminVendors />}
-          />
+          <Route path="/admin/vendor" element={<AdminVendors />}/>
 
           {/* Order Monitoring */}
 
-          <Route
-            path="/admin/order"
-            element={<AdminOrders />}
-          />
+          <Route path="/admin/order" element={<AdminOrders />}/>
 
           {/* Commission Management */}
 
-          <Route
-            path="/admin/commission"
-            element={<AdminCommissions />}
-          />
+          <Route path="/admin/commission" element={<AdminCommissions />}/>
 
           {/* System Monitoring */}
 
-          <Route
-            path="/admin/system"
-            element={<AdminSystem />}
-          />
+          <Route path="/admin/system" element={<AdminSystem />}/>
 
           {/* Business Reports */}
 
-          <Route
-            path="/admin/report"
-            element={<AdminReports />}
-          />
+          <Route path="/admin/report" element={<AdminReports />} />
+          <Route path="/admin/coupons" element={<AdminCoupons/>} />
 
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
