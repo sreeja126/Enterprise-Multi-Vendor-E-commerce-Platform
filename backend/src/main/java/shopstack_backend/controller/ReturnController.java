@@ -43,38 +43,11 @@ public class ReturnController {
     }
 
     // Vendor's incoming return requests — only for their own products.
+    // Read-only: approving/rejecting/QC now belongs to admin (see
+    // AdminReturnController), since real fulfillment routes returns through
+    // a warehouse the vendor doesn't directly operate.
     @GetMapping("/vendor")
     public ResponseEntity<List<ReturnRequestResponseDTO>> getVendorReturnRequests(Authentication authentication) {
         return ResponseEntity.ok(returnService.getVendorReturnRequests(authentication.getName()));
-    }
-
-    @PutMapping("/{id}/approve")
-    public ResponseEntity<?> approveReturn(@PathVariable Long id,
-                                            Authentication authentication,
-                                            @RequestBody(required = false) ResolveReturnRequestDTO request) {
-        try {
-            String note = request != null ? request.getResolutionNote() : null;
-            ReturnRequestResponseDTO updated = returnService.approveReturn(authentication.getName(), id, note);
-            return ResponseEntity.ok(updated);
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @PutMapping("/{id}/reject")
-    public ResponseEntity<?> rejectReturn(@PathVariable Long id,
-                                           Authentication authentication,
-                                           @RequestBody(required = false) ResolveReturnRequestDTO request) {
-        try {
-            String note = request != null ? request.getResolutionNote() : null;
-            ReturnRequestResponseDTO updated = returnService.rejectReturn(authentication.getName(), id, note);
-            return ResponseEntity.ok(updated);
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
     }
 }

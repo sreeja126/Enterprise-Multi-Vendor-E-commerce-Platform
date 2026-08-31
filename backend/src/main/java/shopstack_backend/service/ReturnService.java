@@ -11,9 +11,12 @@ import shopstack_backend.repository.OrderItemRepository;
 import shopstack_backend.repository.ProductRepository;
 import shopstack_backend.repository.RefundRepository;
 import shopstack_backend.repository.ReturnRequestRepository;
+import shopstack_backend.repository.StockAllocationRepository;
+import shopstack_backend.repository.WarehouseStockRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,6 +36,12 @@ public class ReturnService {
 
     @Autowired
     private RefundService refundService;
+
+    @Autowired
+    private StockAllocationRepository stockAllocationRepository;
+
+    @Autowired
+    private WarehouseStockRepository warehouseStockRepository;
 
     @Autowired(required = false)
     private ProductService productService;
@@ -89,64 +98,62 @@ public class ReturnService {
                 .collect(Collectors.toList());
     }
 
-    // Approving a return: marks the item RETURNED, restores stock, and
-    // triggers a real refund. Once the refund itself completes, the item
-    // moves to REFUNDED — matching the Pending → ... → Returned → Refunded
-    // lifecycle.
+    // Admin's global view — every return request across every vendor.
+    @Transactional(readOnly = true)
+    public List<ReturnRequestResponseDTO> getAllReturnRequests() {
+        return returnRequestRepository.findAllByOrderByRequestedAtDesc().stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
     @Transactional
-    public ReturnRequestResponseDTO approveReturn(String vendorEmail, Long returnRequestId, String resolutionNote) {
+    public ReturnRequestResponseDTO approveReturn(Long returnRequestId, String resolutionNote) {
 
-        ReturnRequest request = returnRequestRepository
-                .findByIdAndOrderItem_Product_Vendor_User_Email(returnRequestId, vendorEmail)
-                .orElseThrow(() -> new SecurityException(
-                        "This return request doesn't exist or doesn't belong to your account."));
+        ReturnRequest request = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new IllegalArgumentException("Return request not found."));
 
         if (request.getStatus() != ReturnStatus.REQUESTED) {
             throw new IllegalStateException("This return request has already been " + request.getStatus() + ".");
         }
 
         OrderItem item = request.getOrderItem();
+        Optional<Warehouse> fulfillingWarehouse = stockAllocationRepository
+                .findByOrderItem_Id(item.getId())
+                .stream()
+                .filter(a -> a.getStatus() != AllocationStatus.CANCELLED)
+                .map(StockAllocation::getWarehouse)
+                .findFirst();
 
-        // Restore stock — the item is physically coming back.
+        request.setResolutionNote(resolutionNote);
+
+        if (fulfillingWarehouse.isPresent()) {
+            request.setStatus(ReturnStatus.QC_PENDING);
+            request.setAssignedWarehouse(fulfillingWarehouse.get());
+            request.setResolvedAt(LocalDateTime.now());
+            returnRequestRepository.save(request);
+            return mapToDTO(request);
+        }
+        return completeWithoutWarehouse(request, item);
+    }
+
+    private ReturnRequestResponseDTO completeWithoutWarehouse(ReturnRequest request, OrderItem item) {
         Product product = item.getProduct();
         if (product != null) {
             int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
             product.setStockQuantity(currentStock + item.getQuantity());
             productRepository.save(product);
             if (productService != null) {
-                productService.recordStockChange(product, currentStock, product.getStockQuantity(), "Return Approved");
+                productService.recordStockChange(product, currentStock, product.getStockQuantity(), "Return Approved (no warehouse on record)");
             }
         }
-
-        item.setStatus(OrderStatus.RETURNED);
-        orderItemRepository.save(item);
-
-        request.setStatus(ReturnStatus.APPROVED);
-        request.setResolvedAt(LocalDateTime.now());
-        request.setResolutionNote(resolutionNote);
-        returnRequestRepository.save(request);
-
-        // Trigger the actual refund.
-        Refund refund = refundService.processRefund(item);
-
-        if (refund.getStatus() == RefundStatus.PROCESSED) {
-            item.setStatus(OrderStatus.REFUNDED);
-            orderItemRepository.save(item);
-        }
-        // If the refund FAILED (gateway error), the item stays RETURNED —
-        // physically returned, but payment not yet reversed. That's
-        // visible via the Refund record's own FAILED status for follow-up.
-
+        finalizeReturn(request, item, "ACCEPTED");
         return mapToDTO(request);
     }
 
     @Transactional
-    public ReturnRequestResponseDTO rejectReturn(String vendorEmail, Long returnRequestId, String resolutionNote) {
+    public ReturnRequestResponseDTO rejectReturn(Long returnRequestId, String resolutionNote) {
 
-        ReturnRequest request = returnRequestRepository
-                .findByIdAndOrderItem_Product_Vendor_User_Email(returnRequestId, vendorEmail)
-                .orElseThrow(() -> new SecurityException(
-                        "This return request doesn't exist or doesn't belong to your account."));
+        ReturnRequest request = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new IllegalArgumentException("Return request not found."));
 
         if (request.getStatus() != ReturnStatus.REQUESTED) {
             throw new IllegalStateException("This return request has already been " + request.getStatus() + ".");
@@ -157,6 +164,77 @@ public class ReturnService {
         request.setResolutionNote(resolutionNote);
 
         return mapToDTO(returnRequestRepository.save(request));
+    }
+
+    // Warehouse staff's physical inspection of a returned item.
+    // ACCEPTED  -> goods go back into sellable warehouse stock
+    // DAMAGED   -> goods move to quarantine (damagedQuantity), never resold
+    // Either way, the customer is refunded — QC determines what happens to
+    // the physical inventory, not whether the customer already-approved
+    // return gets paid out.
+    @Transactional
+    public ReturnRequestResponseDTO performQualityCheck(Long returnRequestId, String result, String qcNote) {
+
+        ReturnRequest request = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new IllegalArgumentException("Return request not found."));
+
+        if (request.getStatus() != ReturnStatus.QC_PENDING) {
+            throw new IllegalStateException(
+                    "This return isn't awaiting QC (currently " + request.getStatus() + ").");
+        }
+
+        String normalizedResult = result == null ? "" : result.trim().toUpperCase();
+        if (!normalizedResult.equals("ACCEPTED") && !normalizedResult.equals("DAMAGED")) {
+            throw new IllegalArgumentException("QC result must be ACCEPTED or DAMAGED.");
+        }
+
+        OrderItem item = request.getOrderItem();
+        Warehouse warehouse = request.getAssignedWarehouse();
+        Product product = item.getProduct();
+
+        if (warehouse != null && product != null) {
+            WarehouseStock stock = warehouseStockRepository
+                    .findByWarehouse_IdAndProduct_Id(warehouse.getId(), product.getId())
+                    .orElseGet(() -> {
+                        WarehouseStock s = new WarehouseStock();
+                        s.setWarehouse(warehouse);
+                        s.setProduct(product);
+                        return s;
+                    });
+            if (normalizedResult.equals("ACCEPTED")) {
+                stock.setAvailableQuantity(stock.getAvailableQuantity() + item.getQuantity());
+            } else {
+                stock.setDamagedQuantity(stock.getDamagedQuantity() + item.getQuantity());
+            }
+            warehouseStockRepository.save(stock);
+        }
+
+        request.setQcResult(normalizedResult);
+        request.setQcNote(qcNote);
+        request.setQcAt(LocalDateTime.now());
+
+        finalizeReturn(request, item, normalizedResult);
+        return mapToDTO(request);
+    }
+
+    // Shared tail end for both the QC path and the no-warehouse fallback:
+    // mark the item RETURNED, process the refund, and close out the request.
+    private void finalizeReturn(ReturnRequest request, OrderItem item, String qcResult) {
+        item.setStatus(OrderStatus.RETURNED);
+        orderItemRepository.save(item);
+
+        Refund refund = refundService.processRefund(item);
+        if (refund.getStatus() == RefundStatus.PROCESSED) {
+            item.setStatus(OrderStatus.REFUNDED);
+            orderItemRepository.save(item);
+        }
+        // If the refund FAILED (gateway error), the item stays RETURNED —
+        // physically resolved, but payment not yet reversed. Visible via
+        // the Refund record's own FAILED status for follow-up.
+
+        request.setStatus(ReturnStatus.COMPLETED);
+        request.setResolvedAt(request.getResolvedAt() != null ? request.getResolvedAt() : LocalDateTime.now());
+        returnRequestRepository.save(request);
     }
 
     private ReturnRequestResponseDTO mapToDTO(ReturnRequest request) {
@@ -173,6 +251,13 @@ public class ReturnService {
         dto.setRequestedAt(request.getRequestedAt());
         dto.setResolvedAt(request.getResolvedAt());
         dto.setResolutionNote(request.getResolutionNote());
+        if (request.getAssignedWarehouse() != null) {
+            dto.setAssignedWarehouseId(request.getAssignedWarehouse().getId());
+            dto.setAssignedWarehouseName(request.getAssignedWarehouse().getName());
+        }
+        dto.setQcResult(request.getQcResult());
+        dto.setQcNote(request.getQcNote());
+        dto.setQcAt(request.getQcAt());
 
         refundRepository.findByOrderItemId(item.getId()).ifPresent(refund -> {
             RefundResponseDTO refundDto = new RefundResponseDTO();

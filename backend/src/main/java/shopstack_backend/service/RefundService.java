@@ -81,13 +81,15 @@ public class RefundService {
 
             } catch (Exception e) {
 
-                refund.setStatus(
-                        RefundStatus.FAILED
-                );
+               e.printStackTrace();
 
-                refund.setFailureReason(
-                        e.getMessage()
-                );
+    refund.setStatus(RefundStatus.FAILED);
+
+    refund.setFailureReason(
+            e.getMessage() != null
+                    ? e.getMessage()
+                    : e.getClass().getName()
+    );
             }
 
         } else {

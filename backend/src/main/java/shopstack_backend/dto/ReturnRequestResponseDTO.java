@@ -15,6 +15,11 @@ public class ReturnRequestResponseDTO {
     private LocalDateTime requestedAt;
     private LocalDateTime resolvedAt;
     private String resolutionNote;
+    private Long assignedWarehouseId;
+    private String assignedWarehouseName;
+    private String qcResult;
+    private String qcNote;
+    private LocalDateTime qcAt;
     private RefundResponseDTO refund; // null until the return is approved
 
     public ReturnRequestResponseDTO() {}
@@ -48,6 +53,21 @@ public class ReturnRequestResponseDTO {
 
     public String getResolutionNote() { return resolutionNote; }
     public void setResolutionNote(String resolutionNote) { this.resolutionNote = resolutionNote; }
+
+    public Long getAssignedWarehouseId() { return assignedWarehouseId; }
+    public void setAssignedWarehouseId(Long assignedWarehouseId) { this.assignedWarehouseId = assignedWarehouseId; }
+
+    public String getAssignedWarehouseName() { return assignedWarehouseName; }
+    public void setAssignedWarehouseName(String assignedWarehouseName) { this.assignedWarehouseName = assignedWarehouseName; }
+
+    public String getQcResult() { return qcResult; }
+    public void setQcResult(String qcResult) { this.qcResult = qcResult; }
+
+    public String getQcNote() { return qcNote; }
+    public void setQcNote(String qcNote) { this.qcNote = qcNote; }
+
+    public LocalDateTime getQcAt() { return qcAt; }
+    public void setQcAt(LocalDateTime qcAt) { this.qcAt = qcAt; }
 
     public RefundResponseDTO getRefund() { return refund; }
     public void setRefund(RefundResponseDTO refund) { this.refund = refund; }

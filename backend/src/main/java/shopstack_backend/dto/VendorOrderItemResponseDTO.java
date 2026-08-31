@@ -14,6 +14,11 @@ public class VendorOrderItemResponseDTO {
     private Integer quantity;
     private BigDecimal lineTotal;
     private String status;
+    // True once this item has an active warehouse allocation — the
+    // warehouse pipeline owns advancing its status automatically from
+    // here on, so the vendor UI should show it read-only (except Cancel,
+    // while that's still allowed).
+    private boolean warehouseManaged;
     private String shippingFullName;
     private String shippingPhone;
     private String shippingAddressLine1;
@@ -48,6 +53,9 @@ public class VendorOrderItemResponseDTO {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public boolean isWarehouseManaged() { return warehouseManaged; }
+    public void setWarehouseManaged(boolean warehouseManaged) { this.warehouseManaged = warehouseManaged; }
 
     public String getShippingFullName() { return shippingFullName; }
     public void setShippingFullName(String shippingFullName) { this.shippingFullName = shippingFullName; }

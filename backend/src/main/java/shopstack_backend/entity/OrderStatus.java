@@ -8,5 +8,10 @@ public enum OrderStatus {
     DELIVERED,
     CANCELLED,
     RETURNED,
-    REFUNDED
+    REFUNDED;
+
+    void recomputeOrderStatus(Order order) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'recomputeOrderStatus'");
+    }
 }
