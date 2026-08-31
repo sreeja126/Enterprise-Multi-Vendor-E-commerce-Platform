@@ -31,3 +31,7 @@ export const getAdminReport = async () => {
   const response = await api.get('/admin/reports/business');
   return response.data;
 };
+export const markOrderItemDelivered = async (itemId) => {
+  const response = await api.patch(`/admin/orders/items/${itemId}/deliver`);
+  return response.data;
+};

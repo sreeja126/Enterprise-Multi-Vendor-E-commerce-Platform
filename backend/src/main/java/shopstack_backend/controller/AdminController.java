@@ -6,6 +6,7 @@ import shopstack_backend.entity.CommissionStatus;
 import shopstack_backend.service.AdminService;
 import shopstack_backend.service.CommissionService;
 import shopstack_backend.service.CouponService;
+import shopstack_backend.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,6 +27,9 @@ public class AdminController {
 
     @Autowired
     private CouponService couponService;
+
+    @Autowired
+    private OrderService orderService;
 
     @GetMapping("/dashboard/summary")
     public ResponseEntity<AdminDashboardSummaryDTO> getDashboardSummary() {
@@ -124,5 +128,17 @@ public ResponseEntity<List<AdminOrderDTO>> getAllOrders() {
     @GetMapping("/coupons/usages")
     public ResponseEntity<List<CouponUsageResponseDTO>> getCouponUsages() {
         return ResponseEntity.ok(couponService.getAllUsages());
+    }
+
+    // Final manual confirmation step: courier delivery isn't visible to the
+    // warehouse pipeline, so admin confirms it directly rather than it
+    // happening automatically like PROCESSING/SHIPPED do.
+    @PatchMapping("/orders/items/{itemId}/deliver")
+    public ResponseEntity<?> markItemDelivered(@PathVariable Long itemId) {
+        try {
+            return ResponseEntity.ok(orderService.markItemDelivered(itemId));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

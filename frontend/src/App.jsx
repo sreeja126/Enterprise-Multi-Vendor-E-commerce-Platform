@@ -41,7 +41,9 @@ import AdminCommissions from "./pages/admin/AdminCommissions";
 import AdminSystem from "./pages/admin/AdminSystem";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminCoupons from "./pages/admin/AdminCoupons";
-
+import AdminReturns from "./pages/admin/AdminReturns";
+import AdminWarehouses from "./pages/admin/AdminWarehouses";
+import AdminFulfillment from "./pages/admin/AdminFulfillment";
 // Route Protection
 import ProtectedRoute from "./routes/ProtectedRoute";
 
@@ -57,11 +59,8 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />}/>
-
         <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-
           <Route path="/profile" element={<Profile />}/>
-
           <Route path="/editprofile"element={<EditProfile />}/>
 
           {/* Products */}
@@ -133,7 +132,7 @@ function App() {
           {/* Admin Dashboard */}
 
           <Route path="/admin/dashboard" element={<AdminDashboard />}/>
-
+          
           {/* Vendor Management */}
 
           <Route path="/admin/vendor" element={<AdminVendors />}/>
@@ -145,6 +144,8 @@ function App() {
           {/* Commission Management */}
 
           <Route path="/admin/commission" element={<AdminCommissions />}/>
+          <Route path="/admin/fulfillment" element={<AdminFulfillment/>}/>
+          <Route path="/admin/warehouses" element={<AdminWarehouses/>}/>
 
           {/* System Monitoring */}
 
@@ -154,6 +155,7 @@ function App() {
 
           <Route path="/admin/report" element={<AdminReports />} />
           <Route path="/admin/coupons" element={<AdminCoupons/>} />
+          <Route path="/admin/returns" element={<AdminReturns/>} />
 
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
@@ -166,6 +168,7 @@ function App() {
 
 
 import { Outlet } from "react-router-dom";
+
 
 const NavbarLayout = () => {
   return (

@@ -33,6 +33,21 @@ public class ReturnRequest {
     @Column(length = 1000)
     private String resolutionNote;
 
+    // The warehouse that originally fulfilled this item — auto-assigned on
+    // admin approval, since that's where the customer will physically ship
+    // the item back to for inspection.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_warehouse_id")
+    private Warehouse assignedWarehouse;
+
+    // "ACCEPTED" or "DAMAGED" — set once the warehouse performs QC.
+    private String qcResult;
+
+    @Column(length = 1000)
+    private String qcNote;
+
+    private LocalDateTime qcAt;
+
     public ReturnRequest() {}
 
     @PrePersist
@@ -65,4 +80,16 @@ public class ReturnRequest {
 
     public String getResolutionNote() { return resolutionNote; }
     public void setResolutionNote(String resolutionNote) { this.resolutionNote = resolutionNote; }
+
+    public Warehouse getAssignedWarehouse() { return assignedWarehouse; }
+    public void setAssignedWarehouse(Warehouse assignedWarehouse) { this.assignedWarehouse = assignedWarehouse; }
+
+    public String getQcResult() { return qcResult; }
+    public void setQcResult(String qcResult) { this.qcResult = qcResult; }
+
+    public String getQcNote() { return qcNote; }
+    public void setQcNote(String qcNote) { this.qcNote = qcNote; }
+
+    public LocalDateTime getQcAt() { return qcAt; }
+    public void setQcAt(LocalDateTime qcAt) { this.qcAt = qcAt; }
 }

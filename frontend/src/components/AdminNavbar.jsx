@@ -13,7 +13,10 @@ const AdminNavbar = () => {
     { name: 'Commissions', path: '/admin/commission' },
     { name: 'System', path: '/admin/system' },
     { name: 'Reports', path: '/admin/report' },
-    {name: 'Coupons', path: '/admin/coupons'}
+    {name: 'Coupons', path: '/admin/coupons'},
+    {name: 'WareHouses' ,path: '/admin/warehouses'},
+    {name: 'Fulfillment',path: '/admin/fulfillment'},
+    {name: 'Returns',path: '/admin/returns'}
   ];
 
   const handleLogout = () => {

@@ -22,4 +22,7 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     Optional<ReturnRequest> findByIdAndOrderItem_Product_Vendor_User_Email(Long id, String email);
 
     boolean existsByOrderItemId(Long orderItemId);
+
+    // Admin's global view — every return request, regardless of vendor.
+    List<ReturnRequest> findAllByOrderByRequestedAtDesc();
 }

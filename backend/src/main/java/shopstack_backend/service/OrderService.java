@@ -51,6 +51,10 @@ public class OrderService {
     private CommissionService commissionService;
     @Autowired
     private CouponService couponService;
+    @Autowired
+    private WarehouseService warehouseService;
+    @Autowired
+    private OrderStatusService orderStatusService;
     private static final List<OrderStatus> PROGRESSION = Arrays.asList(
             OrderStatus.PENDING,
             OrderStatus.CONFIRMED,
@@ -76,7 +80,7 @@ public class OrderService {
                         "Please select a valid shipping address before checking out."));
         for (CartItem cartItem : cart.getItems()) {
             Product product = cartItem.getProduct();
-            int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            int available = warehouseService.getTotalAvailableStock(product.getId());
             if (available < cartItem.getQuantity()) {
                 throw new IllegalStateException(
                         "\"" + product.getName() + "\" only has " + available + " unit(s) left. " +
@@ -112,12 +116,10 @@ BigDecimal lineTotal = finalPrice
             orderItem.setStatus(OrderStatus.CONFIRMED);
             orderItems.add(orderItem);
             total = total.add(lineTotal);
-            int previousStock = available(product);
-            product.setStockQuantity(previousStock - cartItem.getQuantity());
-            productRepository.save(product);
-            if (productService != null) {
-                productService.recordStockChange(product, previousStock, product.getStockQuantity(), "Order Placed");
-            }
+            // Stock is no longer decremented here — it now lives entirely at
+            // the warehouse level (WarehouseStock), moved from available to
+            // allocated by warehouseService.allocateOrderToWarehouses below,
+            // right after the order is saved and confirmed.
         }
         order.setItems(orderItems);
         total = total.setScale(2, java.math.RoundingMode.HALF_UP);
@@ -140,6 +142,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        warehouseService.allocateOrderToWarehouses(saved);
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
@@ -179,7 +182,7 @@ BigDecimal lineTotal = finalPrice
                         "Please select a valid shipping address before checking out."));
         for (CartItem cartItem : cart.getItems()) {
             Product product = cartItem.getProduct();
-            int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            int available = warehouseService.getTotalAvailableStock(product.getId());
             if (available < cartItem.getQuantity()) {
                 throw new IllegalStateException(
                         "\"" + product.getName() + "\" only has " + available + " unit(s) left. " +
@@ -215,12 +218,8 @@ BigDecimal lineTotal = finalPrice
             orderItem.setStatus(OrderStatus.CONFIRMED);
             orderItems.add(orderItem);
       total = total.add(lineTotal);
-          int previousStock = available(product);
-            product.setStockQuantity(previousStock - cartItem.getQuantity());
-            productRepository.save(product);
-            if (productService != null) {
-                productService.recordStockChange(product, previousStock, product.getStockQuantity(), "Order Placed");
-            }
+            // Stock decrement now happens exclusively at the warehouse level
+            // (see warehouseService.allocateOrderToWarehouses below).
         }
         order.setItems(orderItems);
         total = total.setScale(2, java.math.RoundingMode.HALF_UP);
@@ -243,6 +242,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        warehouseService.allocateOrderToWarehouses(saved);
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
@@ -267,7 +267,7 @@ BigDecimal lineTotal = finalPrice
                         "Please select a valid shipping address before checking out."));
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
-        int available = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+        int available = warehouseService.getTotalAvailableStock(product.getId());
         if (available < quantity) {
             throw new IllegalStateException(
                     "\"" + product.getName() + "\" only has " + available + " unit(s) left.");
@@ -315,13 +315,12 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        warehouseService.allocateOrderToWarehouses(saved);
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
-        product.setStockQuantity(available - quantity);
-        productRepository.save(product);
-        if (productService != null) {
-            productService.recordStockChange(product, available, product.getStockQuantity(), "Order Placed (Buy Now)");   }
+        // Stock decrement now happens exclusively at the warehouse level
+        // (see warehouseService.allocateOrderToWarehouses above).
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
         OrderResponseDTO dto = mapToDTO(saved, payment);
         dto.setCustomerOrderNumber(userOrders.size());
@@ -344,9 +343,6 @@ BigDecimal lineTotal = finalPrice
         payment.setAmount(order.getTotalAmount());
         payment.setPaidAt(LocalDateTime.now());
         return paymentRepository.save(payment);
-    }
-    private int available(Product product) {
-        return product.getStockQuantity() != null ? product.getStockQuantity() : 0;
     }
     @Transactional(readOnly = true)
     public List<OrderResponseDTO> getOrderHistory(String email) {
@@ -383,6 +379,40 @@ BigDecimal lineTotal = finalPrice
                 .map(this::mapToVendorDTO)
                 .collect(Collectors.toList());
     }
+   @Transactional
+public OrderResponseDTO markItemDelivered(Long orderItemId) {
+
+    OrderItem item = orderItemRepository.findById(orderItemId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException("Order item not found."));
+
+    // Prevent Mark Delivered from being clicked again.
+    if (item.getStatus() == OrderStatus.DELIVERED) {
+        throw new IllegalStateException(
+                "This item has already been delivered."
+        );
+    }
+    if (item.getStatus() != OrderStatus.SHIPPED) {
+        throw new IllegalStateException(
+                "This item is currently " + item.getStatus()
+                        + " and has not been shipped yet."
+        );
+    }
+
+    // Update the actual order-item status.
+    item.setStatus(OrderStatus.DELIVERED);
+    orderItemRepository.save(item);
+    warehouseService.markAllocationsDelivered(item);
+
+    // Recalculate the parent order status.
+    Order order = item.getOrder();
+    orderStatusService.recomputeOrderStatus(order);
+    Payment payment = paymentRepository
+            .findByOrderId(order.getId())
+            .orElse(null);
+
+    return mapToDTO(order, payment);
+}
   @Transactional
     public VendorOrderItemResponseDTO updateItemStatus(String vendorEmail, Long orderItemId, String newStatusRaw) {
     OrderItem item = orderItemRepository.findByIdAndProduct_Vendor_User_Email(orderItemId, vendorEmail)
@@ -399,7 +429,20 @@ BigDecimal lineTotal = finalPrice
             throw new IllegalStateException(
                     "This item is already " + currentStatus + " and can't be changed further.");
         }
-        if (newStatus != OrderStatus.CANCELLED) {
+        if (newStatus == OrderStatus.CANCELLED) {
+            if (currentStatus == OrderStatus.SHIPPED || currentStatus == OrderStatus.DELIVERED) {
+                throw new IllegalStateException(
+                        "This item has already " +
+                        (currentStatus == OrderStatus.DELIVERED ? "been delivered" : "shipped") +
+                        " and can no longer be cancelled here. Use the returns process instead.");
+            }
+        } else {
+            if (warehouseService.isWarehouseManaged(item.getId())) {
+                throw new IllegalStateException(
+                        "This item is being handled by the warehouse fulfillment pipeline " +
+                        "(pick \u2192 pack \u2192 ship) and updates automatically as it moves through " +
+                        "that process \u2014 no manual status change is needed here.");
+            }
             int currentIndex = PROGRESSION.indexOf(currentStatus);
             int newIndex = PROGRESSION.indexOf(newStatus);
             if (newIndex == -1) {
@@ -415,8 +458,11 @@ BigDecimal lineTotal = finalPrice
         }
         item.setStatus(newStatus);
         orderItemRepository.save(item);
-       recomputeOrderStatus(item.getOrder());
+       orderStatusService.recomputeOrderStatus(item.getOrder());
         commissionService.syncCommissionsForOrder(item.getOrder());
+        if (newStatus == OrderStatus.CANCELLED) {
+            warehouseService.releaseAllocationsForItem(item);
+        }
         return mapToVendorDTO(item);
     }
     @Transactional
@@ -432,19 +478,16 @@ BigDecimal lineTotal = finalPrice
                     "This item is already " + currentStatus + " and can no longer be cancelled. " +
                     "Contact the seller if you need to return it once delivered.");  }
         Product product = item.getProduct();
-        if (product != null) {
-            int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
-            product.setStockQuantity(currentStock + item.getQuantity());
-            productRepository.save(product);
-            if (productService != null) {
-                productService.recordStockChange(product, currentStock, product.getStockQuantity(), "Order Cancelled");
-            }
-        }
+        // Stock restoration now happens entirely at the warehouse level via
+        // warehouseService.releaseAllocationsForItem below — Product.stockQuantity
+        // represents the vendor's undistributed pool and was already "spent"
+        // at distribution time, not at sale time, so it isn't touched here.
         item.setStatus(OrderStatus.CANCELLED);
         orderItemRepository.save(item);
         Order order = item.getOrder();
-        recomputeOrderStatus(order);
+        orderStatusService.recomputeOrderStatus(order);
         commissionService.syncCommissionsForOrder(order);
+        warehouseService.releaseAllocationsForItem(item);
         Payment payment = paymentRepository.findByOrderId(order.getId()).orElse(null);
         refundIfPaidOnline(item, payment);
         return mapToDTO(order, payment);
@@ -458,26 +501,20 @@ BigDecimal lineTotal = finalPrice
         for (OrderItem item : order.getItems()) {
             OrderStatus status = item.getStatus();
             if (status == OrderStatus.PENDING || status == OrderStatus.CONFIRMED) {
-                Product product = item.getProduct();
-                if (product != null) {
-                    int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
-                    product.setStockQuantity(currentStock + item.getQuantity());
-                    productRepository.save(product);
-                    if (productService != null) {
-                        productService.recordStockChange(product, currentStock, product.getStockQuantity(), "Order Cancelled");
-                    }
-                }
+                // Stock restoration happens at the warehouse level via
+                // warehouseService.releaseAllocationsForItem below.
                 item.setStatus(OrderStatus.CANCELLED);
                 orderItemRepository.save(item);
                 cancelledAny = true;
                 refundIfPaidOnline(item, payment);
+                warehouseService.releaseAllocationsForItem(item);
             }
         }
       if (!cancelledAny) {
             throw new IllegalStateException(
                     "None of the items in this order can be cancelled anymore — they're already being processed.");
         }
-        recomputeOrderStatus(order);
+        orderStatusService.recomputeOrderStatus(order);
         commissionService.syncCommissionsForOrder(order);
         return mapToDTO(order, payment);
     }
@@ -487,27 +524,6 @@ BigDecimal lineTotal = finalPrice
         if (payment.getStatus() != PaymentStatus.SUCCESS) return;
         if (refundRepository.findByOrderItemId(item.getId()).isPresent()) return; // already refunded once
         refundService.processRefund(item);
-    }
-    private void recomputeOrderStatus(Order order) {
-        List<OrderItem> items = order.getItems();
-        if (items == null || items.isEmpty()) return;
-        OrderStatus least = null;
-        for (OrderItem item : items) {
-            OrderStatus s = item.getStatus();
-            if (s == OrderStatus.CANCELLED) continue; // don't let a cancelled item hold others back
-            int idx = PROGRESSION.indexOf(s);
-            if (idx == -1) continue; // RETURNED/REFUNDED items also excluded from this comparison
-            if (least == null || idx < PROGRESSION.indexOf(least)) {
-                least = s;
-            }
-        }
-        if (least == null) {
-            boolean allCancelled = items.stream().allMatch(i -> i.getStatus() == OrderStatus.CANCELLED);
-            order.setStatus(allCancelled ? OrderStatus.CANCELLED : order.getStatus());
-        } else {
-            order.setStatus(least);
-        }
-        orderRepository.save(order);
     }
     private VendorOrderItemResponseDTO mapToVendorDTO(OrderItem item) {
         VendorOrderItemResponseDTO dto = new VendorOrderItemResponseDTO();
@@ -520,6 +536,7 @@ BigDecimal lineTotal = finalPrice
         dto.setQuantity(item.getQuantity());
         dto.setLineTotal(item.getLineTotal());
         dto.setStatus(item.getStatus().name());
+        dto.setWarehouseManaged(warehouseService.isWarehouseManaged(item.getId()));
         dto.setShippingFullName(order.getShippingFullName());
         dto.setShippingPhone(order.getShippingPhone());
         dto.setShippingAddressLine1(order.getShippingAddressLine1());

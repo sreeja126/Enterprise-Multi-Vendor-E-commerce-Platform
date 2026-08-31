@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
-import { getVendorReturnRequests, approveReturn, rejectReturn } from "../services/returnService";
+import { getVendorReturnRequests } from "../services/returnService";
 
 const STATUS_STYLES = {
   REQUESTED: "bg-amber-50 text-amber-700 border-amber-200",
-  APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  APPROVED: "bg-blue-50 text-blue-700 border-blue-200",
   REJECTED: "bg-rose-50 text-rose-700 border-rose-200",
+  QC_PENDING: "bg-violet-50 text-violet-700 border-violet-200",
+  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+const STATUS_LABELS = {
+  REQUESTED: "Awaiting Admin Review",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  QC_PENDING: "At Warehouse — Awaiting QC",
+  COMPLETED: "Completed",
 };
 
 const REFUND_STYLES = {
@@ -16,7 +26,6 @@ const REFUND_STYLES = {
 function VendorReturns() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     fetchRequests();
@@ -30,34 +39,6 @@ function VendorReturns() {
       console.error("Failed to load return requests", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleApprove = async (id) => {
-    if (!window.confirm("Approve this return? This will restore stock and process a refund.")) return;
-
-    setBusyId(id);
-    try {
-      const updated = await approveReturn(id);
-      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    } catch (err) {
-      alert(err.response?.data || "Failed to approve return.");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleReject = async (id) => {
-    const note = window.prompt("Reason for rejecting this return (optional):") || "";
-
-    setBusyId(id);
-    try {
-      const updated = await rejectReturn(id, note);
-      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    } catch (err) {
-      alert(err.response?.data || "Failed to reject return.");
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -80,6 +61,9 @@ function VendorReturns() {
           <p className="text-slate-500 mt-1">
             {requests.length} request{requests.length !== 1 ? "s" : ""} across your products
           </p>
+          <p className="text-xs text-slate-400 mt-2 bg-stone-100 inline-block px-3 py-1.5 rounded-lg">
+            📦 Returns are reviewed by admin and inspected at the warehouse — this view is read-only.
+          </p>
         </div>
 
         {requests.length === 0 ? (
@@ -100,7 +84,7 @@ function VendorReturns() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs text-slate-400">Order #{req.orderId}</span>
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_STYLES[req.status] || "bg-stone-100 text-stone-600 border-stone-200"}`}>
-                        {req.status}
+                        {STATUS_LABELS[req.status] || req.status}
                       </span>
                     </div>
                     <p className="font-semibold text-slate-900">{req.productName}</p>
@@ -119,13 +103,29 @@ function VendorReturns() {
                 </div>
 
                 {req.resolutionNote && (
+                  <div className="text-xs text-slate-500 mb-2">
+                    <span className="font-semibold">Admin's note:</span> {req.resolutionNote}
+                  </div>
+                )}
+
+                {req.assignedWarehouseName && (
+                  <div className="text-xs text-slate-500 mb-2">
+                    <span className="font-semibold">Routed to warehouse:</span> {req.assignedWarehouseName}
+                  </div>
+                )}
+
+                {req.qcResult && (
                   <div className="text-xs text-slate-500 mb-3">
-                    <span className="font-semibold">Your note:</span> {req.resolutionNote}
+                    <span className="font-semibold">QC result:</span>{" "}
+                    <span className={req.qcResult === "ACCEPTED" ? "text-emerald-700 font-semibold" : "text-rose-700 font-semibold"}>
+                      {req.qcResult === "ACCEPTED" ? "Accepted — restocked" : "Damaged — quarantined"}
+                    </span>
+                    {req.qcNote && <span> — {req.qcNote}</span>}
                   </div>
                 )}
 
                 {req.refund && (
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2">
                     <span className={`text-xs font-semibold px-2 py-1 rounded-full ${REFUND_STYLES[req.refund.status] || "bg-stone-100 text-stone-600"}`}>
                       Refund: {req.refund.status}
                     </span>
@@ -137,25 +137,6 @@ function VendorReturns() {
                     {req.refund.failureReason && (
                       <span className="text-xs text-rose-500">{req.refund.failureReason}</span>
                     )}
-                  </div>
-                )}
-
-                {req.status === "REQUESTED" && (
-                  <div className="flex gap-2 pt-2 border-t border-stone-100">
-                    <button
-                      onClick={() => handleApprove(req.id)}
-                      disabled={busyId === req.id}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-60"
-                    >
-                      {busyId === req.id ? "Processing…" : "Approve & Refund"}
-                    </button>
-                    <button
-                      onClick={() => handleReject(req.id)}
-                      disabled={busyId === req.id}
-                      className="px-4 py-2 rounded-lg text-sm font-medium border border-rose-200 text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
-                    >
-                      Reject
-                    </button>
                   </div>
                 )}
               </div>

@@ -15,7 +15,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     // this is the vendor-isolation boundary: a vendor only ever sees their
     // own line items, never another vendor's items even within the same order.
     List<OrderItem> findByProduct_Vendor_User_EmailOrderByOrder_CreatedAtDesc(String email);
-
+    List<OrderItem> findByOrder_Id(Long orderId);
     // Ownership check for a status update: this item must both exist AND
     // belong to a product owned by this vendor.
     Optional<OrderItem> findByIdAndProduct_Vendor_User_Email(Long id, String email);
