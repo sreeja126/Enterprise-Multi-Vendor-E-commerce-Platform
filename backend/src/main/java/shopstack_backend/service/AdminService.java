@@ -34,8 +34,14 @@ public class AdminService {
     public AdminDashboardSummaryDTO getDashboardSummary() {
         List<Order> orders = orderRepository.findAll();
 
+        // Cancelled and fully-refunded orders represent zero real revenue —
+        // counting them here would overstate sales against what the
+        // platform actually keeps (and against real payment-gateway
+        // settlement figures an admin would compare this against).
         BigDecimal totalSales = orders.stream()
                 .filter(o -> o.getTotalAmount() != null)
+                .filter(o -> o.getStatus() != shopstack_backend.entity.OrderStatus.CANCELLED
+                        && o.getStatus() != shopstack_backend.entity.OrderStatus.REFUNDED)
                 .map(Order::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -77,6 +83,41 @@ public class AdminService {
         return dtos;
     }
 
+    // ---------------------------------------------------------------
+    // Vendor approval workflow: a newly registered vendor (or a customer
+    // who used "Become a Vendor") starts PENDING and can't list products
+    // (see ProductService.addProduct's gate) until admin approves them.
+    // ---------------------------------------------------------------
+
+    public AdminVendorDTO approveVendor(Long vendorId) {
+        Vendor vendor = vendorRepository.findById(vendorId)
+                .orElseThrow(() -> new IllegalArgumentException("Vendor not found."));
+        vendor.setStatus("APPROVED");
+        vendorRepository.save(vendor);
+        return toVendorDTO(vendor);
+    }
+
+    public AdminVendorDTO rejectVendor(Long vendorId) {
+        Vendor vendor = vendorRepository.findById(vendorId)
+                .orElseThrow(() -> new IllegalArgumentException("Vendor not found."));
+        vendor.setStatus("REJECTED");
+        vendorRepository.save(vendor);
+        return toVendorDTO(vendor);
+    }
+
+    private AdminVendorDTO toVendorDTO(Vendor v) {
+        long productCount = v.getProducts() == null ? 0 : v.getProducts().size();
+        return new AdminVendorDTO(
+                v.getId(),
+                v.getName(),
+                v.getEmail(),
+                v.getPhone(),
+                v.getDescription(),
+                v.getStatus(),
+                productCount
+        );
+    }
+
     public List<AdminVendorDTO> getAllVendors1() {
     List<Vendor> vendors = vendorRepository.findAll();
     List<AdminVendorDTO> dtos = new ArrayList<>();
@@ -115,7 +156,7 @@ public List<AdminOrderDTO> getAllOrders() {
                 ? order.getItems().size()
                 : 0;
 
-        result.add(new AdminOrderDTO(
+        AdminOrderDTO dto = new AdminOrderDTO(
                 order.getId(),
                 customerName,
                 customerEmail,
@@ -125,7 +166,25 @@ public List<AdminOrderDTO> getAllOrders() {
                         : "UNKNOWN",
                 order.getCreatedAt(),
                 itemCount
-        ));
+        );
+
+        List<AdminOrderItemDTO> itemDTOs = new ArrayList<>();
+        if (order.getItems() != null) {
+            for (var item : order.getItems()) {
+                itemDTOs.add(new AdminOrderItemDTO(
+                        item.getId(),
+                        item.getProduct() != null ? item.getProduct().getId() : null,
+                        item.getProductName(),
+                        item.getQuantity(),
+                        item.getPriceAtPurchase(),
+                        item.getLineTotal(),
+                        item.getStatus() != null ? item.getStatus().name() : "UNKNOWN"
+                ));
+            }
+        }
+        dto.setItems(itemDTOs);
+
+        result.add(dto);
     }
 
     return result;

@@ -14,4 +14,8 @@ public interface WarehouseStockRepository extends JpaRepository<WarehouseStock, 
     // first — this is the allocation algorithm's picking order.
     List<WarehouseStock> findByProduct_IdAndAvailableQuantityGreaterThanOrderByAvailableQuantityDesc(
             Long productId, int minQuantity);
+
+    // Cleared along with a product being permanently deleted — a deleted
+    // product has no meaningful warehouse stock to track anymore.
+    void deleteByProduct_Id(Long productId);
 }

@@ -7,6 +7,14 @@ export const getAdminVendors = async () => {
   const response = await api.get('/admin/vendors');
   return response.data;
 };
+export const approveVendor = async (vendorId) => {
+  const response = await api.patch(`/admin/vendors/${vendorId}/approve`);
+  return response.data;
+};
+export const rejectVendor = async (vendorId) => {
+  const response = await api.patch(`/admin/vendors/${vendorId}/reject`);
+  return response.data;
+};
 export const getAdminOrders = async () => {
   const response = await api.get('/admin/orders');
   return response.data;

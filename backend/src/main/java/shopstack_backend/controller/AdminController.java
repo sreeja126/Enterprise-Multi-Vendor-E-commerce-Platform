@@ -41,6 +41,24 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAllVendors());
     }
 
+    @PatchMapping("/vendors/{id}/approve")
+    public ResponseEntity<?> approveVendor(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(adminService.approveVendor(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/vendors/{id}/reject")
+    public ResponseEntity<?> rejectVendor(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(adminService.rejectVendor(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
    @GetMapping("/orders")
 public ResponseEntity<List<AdminOrderDTO>> getAllOrders() {
     return ResponseEntity.ok(adminService.getAllOrders());

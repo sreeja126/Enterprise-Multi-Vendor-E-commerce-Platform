@@ -44,6 +44,15 @@ import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminReturns from "./pages/admin/AdminReturns";
 import AdminWarehouses from "./pages/admin/AdminWarehouses";
 import AdminFulfillment from "./pages/admin/AdminFulfillment";
+import AdminWarehouseStaff from "./pages/admin/AdminWarehouseStaff";
+
+// Warehouse Staff
+import WarehouseStaffLayout from "./components/WarehouseStaffLayout";
+import WarehouseStaffDashboard from "./pages/warehouse-staff/WarehouseStaffDashboard";
+import WarehouseStaffStock from "./pages/warehouse-staff/WarehouseStaffStock ";
+import WarehouseStaffReturns from "./pages/warehouse-staff/WarehouseStaffReturns";
+
+
 // Route Protection
 import ProtectedRoute from "./routes/ProtectedRoute";
 
@@ -156,8 +165,28 @@ function App() {
           <Route path="/admin/report" element={<AdminReports />} />
           <Route path="/admin/coupons" element={<AdminCoupons/>} />
           <Route path="/admin/returns" element={<AdminReturns/>} />
+          <Route path="/admin/warehouse-staff" element={<AdminWarehouseStaff/>} />
 
         </Route>
+
+        {/* Warehouse Staff */}
+        <Route
+          element={
+            <ProtectedRoute
+              allowedRoles={[
+                "WAREHOUSE_STAFF",
+                "ROLE_WAREHOUSE_STAFF"
+              ]}
+            >
+              <WarehouseStaffLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/warehouse/dashboard" element={<WarehouseStaffDashboard />} />
+          <Route path="/warehouse/stock" element={<WarehouseStaffStock />} />
+          <Route path="/warehouse/returns" element={<WarehouseStaffReturns />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>

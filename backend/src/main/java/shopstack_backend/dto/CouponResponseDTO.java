@@ -15,6 +15,7 @@ public class CouponResponseDTO {
     private LocalDate startDate;
     private LocalDate expiryDate;
     private Integer usageLimit;
+    private Integer perCustomerLimit;
     private int usageCount;
     private boolean active;
     private String computedStatus; // ACTIVE, INACTIVE, EXPIRED, SCHEDULED, LIMIT_REACHED — for the admin table
@@ -93,6 +94,14 @@ public class CouponResponseDTO {
 
     public void setUsageLimit(Integer usageLimit) {
         this.usageLimit = usageLimit;
+    }
+
+    public Integer getPerCustomerLimit() {
+        return perCustomerLimit;
+    }
+
+    public void setPerCustomerLimit(Integer perCustomerLimit) {
+        this.perCustomerLimit = perCustomerLimit;
     }
 
     public int getUsageCount() {

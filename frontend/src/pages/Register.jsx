@@ -4,6 +4,7 @@ import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
 import { registerUser } from "../services/authService";
+import { getMyAccount } from "../services/accountService";
 
 function Register() {
   const navigate = useNavigate();
@@ -52,17 +53,36 @@ function Register() {
         role: formData.role,
       });
 
-      const data = response.data?.data || response.data;
+      // Backend now returns the same shape login does: { token, role, message }.
+      const data = response.data;
 
-      // 1. Save credentials so Navbar updates state immediately
-      if (data?.token) {
-        localStorage.setItem("token", data.token);
+      if (!data?.token) {
+        // Shouldn't happen now that the backend returns 409 on failure
+        // (which throws and lands in the catch block below), but guard
+        // against it anyway rather than silently "succeeding" with no token.
+        setErrorMessage(data?.message || "Registration failed!");
+        return;
       }
-      
-      const assignedRole = data?.role || formData.role;
+
+      // 1. Save real credentials so the navbar reflects being logged in.
+      localStorage.setItem("token", data.token);
+      const assignedRole = data.role || formData.role;
       localStorage.setItem("role", assignedRole);
 
-      // 2. Dispatch event so Navbar hears the token change
+      // 1b. Also record whether this account has a Vendor profile
+      // (a fresh VENDOR registration always will; CUSTOMER won't yet).
+      try {
+        const account = await getMyAccount();
+        localStorage.setItem("isVendor", String(Boolean(account?.isVendor)));
+      } catch (accountError) {
+        console.error("Failed to load account info:", accountError);
+        localStorage.setItem("isVendor", String(assignedRole === "VENDOR"));
+      }
+
+      // 2. Manually dispatch a "storage" event — localStorage.setItem does
+      // NOT fire the native storage event in the same tab (only in other
+      // tabs), so without this the navbar in this tab would stay stale
+      // until the next full page load.
       window.dispatchEvent(new Event("storage"));
 
       // 3. Direct navigation to dashboard based on role
@@ -76,8 +96,8 @@ function Register() {
       console.error("Registration error:", error);
 
       if (error.response) {
-        const msg = typeof error.response.data === "string" 
-          ? error.response.data 
+        const msg = typeof error.response.data === "string"
+          ? error.response.data
           : error.response.data?.message || "Registration failed!";
         setErrorMessage(msg);
       } else {

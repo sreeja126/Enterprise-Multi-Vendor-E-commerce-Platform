@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import shopstack_backend.dto.QualityCheckRequestDTO;
 import shopstack_backend.dto.ResolveReturnRequestDTO;
 import shopstack_backend.dto.ReturnRequestResponseDTO;
 import shopstack_backend.service.ReturnService;
@@ -13,11 +12,13 @@ import shopstack_backend.service.ReturnService;
 import java.util.List;
 
 /**
- * Admin-only return handling: review/approve/reject a customer's return
- * request, then perform (or record) the warehouse's physical QC once the
- * item is routed back. Kept separate from the customer/vendor-facing
- * ReturnController, and locked down the same way AdminController is —
- * via a class-level @PreAuthorize rather than relying on a URL prefix.
+ * Admin-only return handling: review, approve, or reject a customer's
+ * return request. Once approved, the return is routed to a warehouse for
+ * physical QC — that inspection step belongs to that warehouse's own
+ * staff (see WarehouseStaffController), not admin. Kept separate from the
+ * customer/vendor-facing ReturnController, and locked down the same way
+ * AdminController is — via a class-level @PreAuthorize rather than
+ * relying on a URL prefix.
  */
 @RestController
 @RequestMapping("/api/admin/returns")
@@ -55,16 +56,9 @@ public class AdminReturnController {
         }
     }
 
-    // Warehouse's physical inspection result: ACCEPTED restocks it as
-    // sellable, DAMAGED quarantines it. Either way the customer is refunded.
-    @PutMapping("/{id}/qc")
-    public ResponseEntity<?> performQualityCheck(@PathVariable Long id,
-                                                  @RequestBody QualityCheckRequestDTO request) {
-        try {
-            return ResponseEntity.ok(
-                    returnService.performQualityCheck(id, request.getResult(), request.getNote()));
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
+    // Note: performing the physical QC (accept & restock vs. damaged &
+    // quarantine) is deliberately NOT exposed here. Per the fulfillment
+    // workflow, once admin approves a return, only the warehouse it's
+    // routed to can inspect it (WarehouseStaffController, /api/warehouse-staff/**).
+    // Admin's job on returns stops at approve/reject.
 }

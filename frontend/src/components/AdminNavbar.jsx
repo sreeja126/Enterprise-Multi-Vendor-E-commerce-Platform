@@ -16,6 +16,7 @@ const AdminNavbar = () => {
     {name: 'Coupons', path: '/admin/coupons'},
     {name: 'WareHouses' ,path: '/admin/warehouses'},
     {name: 'Fulfillment',path: '/admin/fulfillment'},
+    {name: 'Staff', path: '/admin/warehouse-staff'},
     {name: 'Returns',path: '/admin/returns'}
   ];
 

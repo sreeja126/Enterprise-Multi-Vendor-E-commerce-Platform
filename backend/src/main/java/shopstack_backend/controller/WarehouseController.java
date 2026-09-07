@@ -74,6 +74,14 @@ public class WarehouseController {
         return ResponseEntity.ok(warehouseService.getWarehouseStock(id));
     }
 
+    // Stock of one product across every warehouse — powers the admin's
+    // "which warehouse should fulfill this?" dropdown when manually
+    // allocating an order item.
+    @GetMapping("/products/{productId}/stock")
+    public ResponseEntity<List<WarehouseStockResponseDTO>> getStockForProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(warehouseService.getStockForProduct(productId));
+    }
+
     // ---- Fulfillment queues: pick list, pack list, ready-to-ship list ----
 
     @GetMapping("/{id}/queue/{status}")
@@ -87,42 +95,29 @@ public class WarehouseController {
         }
     }
 
-    @PostMapping("/orders/{orderId}/allocate")
-public ResponseEntity<?> allocateExistingOrder(@PathVariable Long orderId) {
-    try {
-        warehouseService.allocateExistingOrder(orderId);
-        return ResponseEntity.ok().build();
-    } catch (IllegalArgumentException | IllegalStateException e) {
-        return ResponseEntity.badRequest().body(e.getMessage());
-    }
-}
+    // Note: there is deliberately no automatic/algorithmic allocation
+    // endpoint here. Every item is allocated one way only — an admin
+    // manually choosing its warehouse below. Nothing allocates stock on
+    // an admin's behalf, whether at checkout or by loading this screen.
 
-    @PatchMapping("/allocations/{allocationId}/pick")
-    public ResponseEntity<?> pick(@PathVariable Long allocationId) {
+    // Admin manually chooses which warehouse (and how much) fulfills a
+    // specific order item.
+    @PostMapping("/order-items/{orderItemId}/allocate")
+    public ResponseEntity<?> manuallyAllocate(@PathVariable Long orderItemId,
+                                               @RequestBody ManualAllocationRequestDTO request) {
         try {
-            return ResponseEntity.ok(warehouseService.pick(allocationId));
+            return ResponseEntity.ok(
+                    warehouseService.manuallyAllocate(orderItemId, request.getWarehouseId(), request.getQuantity()));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    @PatchMapping("/allocations/{allocationId}/pack")
-    public ResponseEntity<?> pack(@PathVariable Long allocationId) {
-        try {
-            return ResponseEntity.ok(warehouseService.pack(allocationId));
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @PatchMapping("/allocations/{allocationId}/ready")
-    public ResponseEntity<?> markReady(@PathVariable Long allocationId) {
-        try {
-            return ResponseEntity.ok(warehouseService.markReadyForShipment(allocationId));
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
+    // Note: pick / pack / ready-for-shipment are deliberately NOT exposed
+    // here. Per the fulfillment workflow, once an order is allocated to a
+    // warehouse, only that warehouse's own staff (WarehouseStaffController,
+    // /api/warehouse-staff/**) can pick, pack, and mark it ready. Admin's
+    // job stops at allocation and oversight (queues/movements below).
 
     // ---- Per-order fulfillment view + movement history ----
 

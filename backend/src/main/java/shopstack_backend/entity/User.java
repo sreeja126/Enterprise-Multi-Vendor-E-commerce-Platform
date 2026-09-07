@@ -23,6 +23,13 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
+    // Only meaningful when role == WAREHOUSE_STAFF. Set by an admin when
+    // creating/reassigning a warehouse staff account — this is what scopes
+    // that staff member's view to a single warehouse's orders and stock.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_warehouse_id")
+    private Warehouse assignedWarehouse;
+
     public User() {
     }
 
@@ -71,5 +78,13 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public Warehouse getAssignedWarehouse() {
+        return assignedWarehouse;
+    }
+
+    public void setAssignedWarehouse(Warehouse assignedWarehouse) {
+        this.assignedWarehouse = assignedWarehouse;
     }
 }

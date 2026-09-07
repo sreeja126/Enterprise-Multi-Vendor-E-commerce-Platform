@@ -28,6 +28,9 @@ public class WishlistService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired(required = false)
+    private WarehouseService warehouseService;
+
     // Get all wishlist items for a user
     @Transactional(readOnly = true)
     public List<WishlistItemResponseDTO> getWishlist(String email) {
@@ -117,10 +120,12 @@ public class WishlistService {
                 product.getFinalPrice()
         );
 
-        // Stock status
-        int stock = product.getStockQuantity() != null
-                ? product.getStockQuantity()
-                : 0;
+        // Stock status — reflects real purchasable (warehouse) stock, not
+        // the vendor's undistributed pool, so this matches what checkout
+        // actually gates against.
+        int stock = warehouseService != null
+                ? warehouseService.getTotalAvailableStock(product.getId())
+                : (product.getStockQuantity() != null ? product.getStockQuantity() : 0);
 
         dto.setInStock(stock > 0);
 

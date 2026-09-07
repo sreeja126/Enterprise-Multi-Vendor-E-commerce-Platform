@@ -41,18 +41,41 @@ public class OrderStatusService {
         OrderStatus least = null;
         for (OrderItem item : items) {
             OrderStatus s = item.getStatus();
-            if (s == OrderStatus.CANCELLED) continue; // don't let a cancelled item hold others back
+            if (s == OrderStatus.CANCELLED || s == OrderStatus.RETURNED || s == OrderStatus.REFUNDED) {
+                continue; // handled below, once every item has left the main progression
+            }
             int idx = PROGRESSION.indexOf(s);
-            if (idx == -1) continue; // RETURNED/REFUNDED items also excluded from this comparison
+            if (idx == -1) continue;
             if (least == null || idx < PROGRESSION.indexOf(least)) {
                 least = s;
             }
         }
-        if (least == null) {
-            boolean allCancelled = items.stream().allMatch(i -> i.getStatus() == OrderStatus.CANCELLED);
-            order.setStatus(allCancelled ? OrderStatus.CANCELLED : order.getStatus());
-        } else {
+
+        if (least != null) {
+            // At least one item is still moving through the normal
+            // PENDING -> DELIVERED progression — the order tracks that.
             order.setStatus(least);
+            orderRepository.save(order);
+            return;
+        }
+
+        // Every item has left the normal progression: each one is now
+        // CANCELLED, RETURNED, or REFUNDED. Reflect the overall outcome
+        // on the order itself instead of leaving its status stale.
+        boolean allCancelled = items.stream().allMatch(i -> i.getStatus() == OrderStatus.CANCELLED);
+        if (allCancelled) {
+            order.setStatus(OrderStatus.CANCELLED);
+        } else {
+            boolean anyReturnedOrRefunded = items.stream()
+                    .anyMatch(i -> i.getStatus() == OrderStatus.RETURNED || i.getStatus() == OrderStatus.REFUNDED);
+            if (anyReturnedOrRefunded) {
+                // REFUNDED only once every non-cancelled item has actually
+                // had its refund processed; otherwise RETURNED (goods are
+                // back / QC'd, but at least one refund is still pending).
+                boolean allRefundedOrCancelled = items.stream()
+                        .allMatch(i -> i.getStatus() == OrderStatus.REFUNDED || i.getStatus() == OrderStatus.CANCELLED);
+                order.setStatus(allRefundedOrCancelled ? OrderStatus.REFUNDED : OrderStatus.RETURNED);
+            }
         }
         orderRepository.save(order);
     }

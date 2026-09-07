@@ -4,6 +4,7 @@ import AuthLayout from "../components/AuthLayout";
 import InputField from "../components/InputField";
 import Button from "../components/Button";
 import { loginUser } from "../services/authService";
+import { getMyAccount } from "../services/accountService";
 
 function Login() {
   const navigate = useNavigate();
@@ -48,6 +49,17 @@ function Login() {
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.role);
 
+      // 2b. Also find out whether this account has a Vendor profile
+      // independent of its primary role (multi-role support — a CUSTOMER
+      // may have chosen to "Become a Vendor"). Non-fatal if it fails.
+      try {
+        const account = await getMyAccount();
+        localStorage.setItem("isVendor", String(Boolean(account?.isVendor)));
+      } catch (accountError) {
+        console.error("Failed to load account info:", accountError);
+        localStorage.setItem("isVendor", "false");
+      }
+
       // 3. Dispatch storage event so Navbar updates instantly
       window.dispatchEvent(new Event("storage"));
 
@@ -58,6 +70,8 @@ function Login() {
   navigate("/customer-dashboard");
 } else if (data.role === "ADMINISTRATOR") {
   navigate("/admin/dashboard");
+} else if (data.role === "WAREHOUSE_STAFF") {
+  navigate("/warehouse/dashboard");
 } else {
   navigate("/");
 }

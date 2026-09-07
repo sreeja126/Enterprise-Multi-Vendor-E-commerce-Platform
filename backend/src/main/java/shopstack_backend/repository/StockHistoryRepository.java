@@ -14,4 +14,7 @@ public interface StockHistoryRepository extends JpaRepository<StockHistory, Long
     // Every stock change across all of a vendor's products, newest first —
     // used for a combined activity feed if needed.
     List<StockHistory> findByProduct_Vendor_User_EmailOrderByChangedAtDesc(String email);
+
+    // Cleared along with a product being permanently deleted.
+    void deleteByProductId(Long productId);
 }

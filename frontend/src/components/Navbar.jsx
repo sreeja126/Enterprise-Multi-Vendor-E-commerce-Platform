@@ -1,24 +1,41 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { getCart } from "../services/cartService"; // Adjust import path if needed
+import { becomeVendor } from "../services/accountService";
+
 function Navbar({ cartCount: initialCartCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(initialCartCount);
+  const [becomingVendor, setBecomingVendor] = useState(false);
 
   // 1. Keep auth state in React state so updates trigger a re-render
   const [token, setToken] = useState(() => localStorage.getItem("token"));
   const [role, setRole] = useState(() => localStorage.getItem("role") || "");
+  // Multi-role support: hasVendorAccess reflects whether THIS account has a
+  // Vendor profile at all (regardless of primary role) — e.g. a CUSTOMER
+  // who used "Become a Vendor". viewMode is which nav/dashboard is
+  // currently being shown, and is only switchable when both are available.
+  const [hasVendorAccess, setHasVendorAccess] = useState(
+    () => localStorage.getItem("isVendor") === "true"
+  );
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem("viewAs") || localStorage.getItem("role") || ""
+  );
 
-  const isVendor = role.toUpperCase() === "VENDOR";
+  const primaryRole = role.toUpperCase();
+  const isVendor = viewMode.toUpperCase() === "VENDOR";
 
   // Synchronize auth state on route changes and custom dispatch events
   useEffect(() => {
     const syncAuth = () => {
+      const storedRole = localStorage.getItem("role") || "";
       setToken(localStorage.getItem("token"));
-      setRole(localStorage.getItem("role") || "");
+      setRole(storedRole);
+      setHasVendorAccess(localStorage.getItem("isVendor") === "true");
+      setViewMode(localStorage.getItem("viewAs") || storedRole);
     };
 
     syncAuth(); // Runs every time route/location changes
@@ -84,13 +101,53 @@ function Navbar({ cartCount: initialCartCount = 0 }) {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
+    localStorage.removeItem("isVendor");
+    localStorage.removeItem("viewAs");
     setToken(null);
     setRole("");
+    setHasVendorAccess(false);
+    setViewMode("");
     setCartCount(0);
     navigate("/login");
   };
 
+  // Flip between the customer and vendor sides of one account. Only
+  // reachable when hasVendorAccess is true — otherwise there's nothing
+  // to switch to.
+  const handleSwitchView = () => {
+    const nextMode = isVendor ? "CUSTOMER" : "VENDOR";
+    localStorage.setItem("viewAs", nextMode);
+    setViewMode(nextMode);
+    window.dispatchEvent(new Event("storage"));
+    navigate(nextMode === "VENDOR" ? "/vendor-dashboard" : "/customer-dashboard");
+  };
+
+  // Self-service upgrade for a non-vendor account to also gain a Vendor
+  // profile, without creating a second login.
+  const handleBecomeVendor = async () => {
+    if (becomingVendor) return;
+    setBecomingVendor(true);
+    try {
+      await becomeVendor({});
+      localStorage.setItem("isVendor", "true");
+      localStorage.setItem("viewAs", "VENDOR");
+      setHasVendorAccess(true);
+      setViewMode("VENDOR");
+      window.dispatchEvent(new Event("storage"));
+      navigate("/vendor-dashboard");
+    } catch (err) {
+      console.error("Failed to become a vendor:", err);
+      alert(err.response?.data || "Failed to set up your vendor profile. Please try again.");
+    } finally {
+      setBecomingVendor(false);
+    }
+  };
+
   const isActive = (path) => location.pathname === path;
+
+  // Only offer "Become a Vendor" to an account that isn't already a
+  // vendor in any sense (primary role VENDOR, or already has a profile).
+  const canBecomeVendor = token && primaryRole !== "VENDOR" && !hasVendorAccess;
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-sm">
@@ -227,6 +284,32 @@ function Navbar({ cartCount: initialCartCount = 0 }) {
         <div className="flex items-center gap-3">
           {token ? (
             <>
+              {/* Multi-role: switch between the customer and vendor sides
+                  of the SAME account, once it has both. */}
+              {hasVendorAccess && (
+                <button
+                  type="button"
+                  onClick={handleSwitchView}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                  title="Switch between your customer and vendor views"
+                >
+                  {isVendor ? "Switch to Customer" : "Switch to Vendor"}
+                </button>
+              )}
+
+              {/* Self-service upgrade: a plain customer account can become
+                  a vendor too, without a second registration. */}
+              {canBecomeVendor && (
+                <button
+                  type="button"
+                  onClick={handleBecomeVendor}
+                  disabled={becomingVendor}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-stone-300 text-slate-700 hover:bg-stone-100 transition cursor-pointer disabled:opacity-50"
+                >
+                  {becomingVendor ? "Setting up…" : "Become a Vendor"}
+                </button>
+              )}
+
               <Link
                 to="/profile"
                 className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition ${
@@ -302,6 +385,25 @@ function Navbar({ cartCount: initialCartCount = 0 }) {
           <Link to="/profile" className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-stone-100">
             Profile
           </Link>
+          {hasVendorAccess && (
+            <button
+              type="button"
+              onClick={handleSwitchView}
+              className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-emerald-700 hover:bg-emerald-50"
+            >
+              {isVendor ? "Switch to Customer" : "Switch to Vendor"}
+            </button>
+          )}
+          {canBecomeVendor && (
+            <button
+              type="button"
+              onClick={handleBecomeVendor}
+              disabled={becomingVendor}
+              className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:bg-stone-100 disabled:opacity-50"
+            >
+              {becomingVendor ? "Setting up…" : "Become a Vendor"}
+            </button>
+          )}
         </div>
       )}
     </header>

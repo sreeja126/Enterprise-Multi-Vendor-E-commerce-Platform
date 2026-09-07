@@ -14,6 +14,7 @@ import shopstack_backend.dto.RazorpayOrderResponseDTO;
 import shopstack_backend.dto.VerifyBuyNowRequest;
 import shopstack_backend.dto.VerifyPaymentRequest;
 import shopstack_backend.entity.Product;
+import shopstack_backend.repository.PaymentRepository;
 import shopstack_backend.repository.ProductRepository;
 
 import java.math.BigDecimal;
@@ -35,7 +36,13 @@ public class RazorpayPaymentService {
     private ProductRepository productRepository;
 
     @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
     private CouponService couponService;
+
+    @Autowired(required = false)
+    private WarehouseService warehouseService;
 
     @Value("${razorpay.key.id}")
     private String keyId;
@@ -51,13 +58,25 @@ public class RazorpayPaymentService {
             throw new IllegalStateException("Your cart is empty.");
         }
 
+        // Check real purchasable stock BEFORE ever creating a Razorpay
+        // payment order — otherwise a customer could pay for something
+        // that's already unavailable and only find out at /verify time,
+        // after their money has already been charged.
+        for (var item : cart.getItems()) {
+            if (item.getAvailableStock() < item.getQuantity()) {
+                throw new IllegalStateException(
+                        "\"" + item.getProductName() + "\" only has "
+                                + item.getAvailableStock() + " unit(s) left. Please update your cart.");
+            }
+        }
+
         BigDecimal totalAmount = cart.getTotalAmount();
 
         // If a coupon code was supplied, charge the discounted amount instead
         // of the full subtotal. Re-validated (and actually reserved) again
         // at /payment/verify time, so this is a preview, not a guarantee.
         if (couponCode != null && !couponCode.isBlank()) {
-            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, totalAmount);
+            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, totalAmount, email);
             totalAmount = totalAmount.subtract(eval.getDiscountAmount()).setScale(2, RoundingMode.HALF_UP);
         }
 
@@ -103,9 +122,9 @@ public class RazorpayPaymentService {
                         new RuntimeException("Product not found")
                 );
 
-        int available = product.getStockQuantity() != null
-                ? product.getStockQuantity()
-                : 0;
+        int available = warehouseService != null
+                ? warehouseService.getTotalAvailableStock(product.getId())
+                : (product.getStockQuantity() != null ? product.getStockQuantity() : 0);
 
         if (available < quantity) {
             throw new IllegalStateException(
@@ -120,7 +139,7 @@ public class RazorpayPaymentService {
                 .setScale(2, RoundingMode.HALF_UP);
 
         if (couponCode != null && !couponCode.isBlank()) {
-            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, amount);
+            CouponService.CouponEvaluationResult eval = couponService.validate(couponCode, amount, email);
             amount = amount.subtract(eval.getDiscountAmount()).setScale(2, RoundingMode.HALF_UP);
         }
 
@@ -174,13 +193,36 @@ public class RazorpayPaymentService {
                 request.getRazorpaySignature()
         );
 
-        return orderService.checkout(
-                email,
-                request.getAddressId(),
-                "RAZORPAY",
-                request.getRazorpayPaymentId(),
-                request.getCouponCode()
-        );
+        // Idempotency guard: this exact payment must never be used to
+        // create more than one order — a double-click, retried request, or
+        // replayed callback would otherwise create two separate orders
+        // (and charge the vendor's stock twice) from one real payment.
+        if (paymentRepository.existsByTransactionId(request.getRazorpayPaymentId())) {
+            throw new IllegalStateException(
+                    "This payment has already been used to complete an order.");
+        }
+
+        try {
+            return orderService.checkout(
+                    email,
+                    request.getAddressId(),
+                    "RAZORPAY",
+                    request.getRazorpayPaymentId(),
+                    request.getCouponCode()
+            );
+        } catch (Exception orderCreationError) {
+            // The payment itself was genuinely verified and captured by
+            // Razorpay — if the order still can't be created (e.g. stock
+            // ran out in the moments between browsing and paying), the
+            // customer has been charged for nothing. Refund automatically
+            // rather than leaving their money in limbo with no order to
+            // show for it.
+            refundFailedPayment(request.getRazorpayPaymentId());
+            throw new IllegalStateException(
+                    "Your payment was successful, but we couldn't complete this order (" +
+                    orderCreationError.getMessage() + "). You have been refunded in full — " +
+                    "it will reflect in your account within 5-7 business days.");
+        }
     }
 
     public OrderResponseDTO verifyAndCompleteBuyNowOrder(
@@ -209,16 +251,44 @@ public class RazorpayPaymentService {
                 request.getRazorpaySignature()
         );
 
-        return orderService.checkoutSingleItem(
-                email,
-                request.getAddressId(),
-                request.getProductId(),
-                request.getQuantity(),
-                "RAZORPAY",
-                request.getRazorpayPaymentId(),
-                shopstack_backend.entity.PaymentStatus.SUCCESS,
-                request.getCouponCode()
-        );
+        if (paymentRepository.existsByTransactionId(request.getRazorpayPaymentId())) {
+            throw new IllegalStateException(
+                    "This payment has already been used to complete an order.");
+        }
+
+        try {
+            return orderService.checkoutSingleItem(
+                    email,
+                    request.getAddressId(),
+                    request.getProductId(),
+                    request.getQuantity(),
+                    "RAZORPAY",
+                    request.getRazorpayPaymentId(),
+                    shopstack_backend.entity.PaymentStatus.SUCCESS,
+                    request.getCouponCode()
+            );
+        } catch (Exception orderCreationError) {
+            refundFailedPayment(request.getRazorpayPaymentId());
+            throw new IllegalStateException(
+                    "Your payment was successful, but we couldn't complete this order (" +
+                    orderCreationError.getMessage() + "). You have been refunded in full — " +
+                    "it will reflect in your account within 5-7 business days.");
+        }
+    }
+
+    // Automatically refunds a captured Razorpay payment when order
+    // creation fails after the payment itself already succeeded. Omitting
+    // "amount" refunds the full captured amount. Best-effort: if the
+    // refund call itself fails, that's logged for manual follow-up rather
+    // than masking the original order-creation error from the customer.
+    private void refundFailedPayment(String razorpayPaymentId) {
+        try {
+            razorpayClient.payments.refund(razorpayPaymentId, new JSONObject());
+        } catch (Exception refundError) {
+            System.err.println(
+                    "CRITICAL: failed to auto-refund payment " + razorpayPaymentId +
+                    " after order creation failure: " + refundError.getMessage());
+        }
     }
 
     private void verifySignature(

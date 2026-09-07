@@ -2,15 +2,14 @@ import React, { useEffect, useState } from 'react';
 import {
   getWarehouses,
   getWarehouseQueue,
-  pickAllocation,
-  packAllocation,
-  markReadyForShipment,
+  getWarehouseStaff,
 } from '../../services/warehouseService';
+import { Link } from 'react-router-dom';
 const STAGES = [
-  { key: 'ALLOCATED', title: 'To Pick', action: 'Pick', actionFn: pickAllocation, accent: 'amber' },
-  { key: 'PICKED', title: 'To Pack', action: 'Pack', actionFn: packAllocation, accent: 'blue' },
-  { key: 'PACKED', title: 'To Ship', action: 'Mark Ready', actionFn: markReadyForShipment, accent: 'emerald' },
-  { key: 'READY_FOR_SHIPMENT', title: 'Ready for Shipment', action: null, actionFn: null, accent: 'slate' },
+  { key: 'ALLOCATED', title: 'To Pick', accent: 'amber' },
+  { key: 'PICKED', title: 'To Pack', accent: 'blue' },
+  { key: 'PACKED', title: 'To Ship', accent: 'emerald' },
+  { key: 'READY_FOR_SHIPMENT', title: 'Ready for Shipment', accent: 'slate' },
 ];
 const ACCENT_STYLES = {
   amber: 'bg-amber-50 border-amber-200/80 text-amber-800',
@@ -20,18 +19,19 @@ const ACCENT_STYLES = {
 };
 const AdminFulfillment = () => {
   const [warehouses, setWarehouses] = useState([]);
+  const [staff, setStaff] = useState([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
   const [queues, setQueues] = useState({ ALLOCATED: [], PICKED: [], PACKED: [], READY_FOR_SHIPMENT: [] });
   const [loading, setLoading] = useState(true);
   const [queueLoading, setQueueLoading] = useState(false);
   const [error, setError] = useState('');
-  const [busyAllocationId, setBusyAllocationId] = useState(null);
   const loadWarehouses = async () => {
     try {
       setLoading(true);
-      const res = await getWarehouses();
-      const list = Array.isArray(res) ? res : [];
+      const [warehousesRes, staffRes] = await Promise.all([getWarehouses(), getWarehouseStaff()]);
+      const list = Array.isArray(warehousesRes) ? warehousesRes : [];
       setWarehouses(list);
+      setStaff(Array.isArray(staffRes) ? staffRes : []);
       if (list.length > 0) {
         setSelectedWarehouseId(String(list[0].id));
       }
@@ -75,25 +75,14 @@ const AdminFulfillment = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWarehouseId]);
-  const handleAction = async (stage, allocation) => {
-    const stageConfig = STAGES.find((s) => s.key === stage);
-    if (!stageConfig?.actionFn) return;
-    try {
-      setBusyAllocationId(allocation.id);
-      await stageConfig.actionFn(allocation.id);
-      await loadQueues(selectedWarehouseId);
-    } catch (err) {
-      alert(err.response?.data || `Failed to mark this item as ${stageConfig.action.toLowerCase()}.`);
-    } finally {
-      setBusyAllocationId(null);
-    }
-  };
   const formatDateTime = (value) => {
     if (!value) return '\u2014';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return '\u2014';
     return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
+
+  const assignedStaff = staff.filter((s) => String(s.warehouseId) === String(selectedWarehouseId));
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -107,7 +96,7 @@ const AdminFulfillment = () => {
               Order Fulfillment
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Pick, pack, and prepare allocated orders for shipment.
+              Read-only oversight — this warehouse's own staff handle pick, pack, and shipment prep from their own dashboard.
             </p>
           </div>
           {warehouses.length > 0 && (
@@ -122,6 +111,30 @@ const AdminFulfillment = () => {
             </select>
           )}
         </div>
+        {warehouses.length > 0 && (
+          <div className={`flex items-center justify-between gap-3 text-sm px-4 py-3 rounded-xl border ${
+            assignedStaff.length > 0
+              ? 'bg-blue-50 border-blue-200/80 text-blue-800'
+              : 'bg-amber-50 border-amber-200/80 text-amber-800'
+          }`}>
+            {assignedStaff.length > 0 ? (
+              <span>
+                <span className="font-semibold">Staff assigned:</span>{' '}
+                {assignedStaff.map((s) => s.fullName).join(', ')}
+              </span>
+            ) : (
+              <span>
+                <span className="font-semibold">No staff assigned</span> to this warehouse yet — orders here won't be worked until someone is.
+              </span>
+            )}
+            <Link
+              to="/admin/warehouse-staff"
+              className="text-xs font-semibold underline underline-offset-2 whitespace-nowrap"
+            >
+              Manage Staff
+            </Link>
+          </div>
+        )}
         {error && (
           <div className="bg-rose-50 border border-rose-200/80 text-rose-700 text-sm px-4 py-3 rounded-xl">
             {error}
@@ -159,16 +172,6 @@ const AdminFulfillment = () => {
                               : allocation.readyAt
                           )}
                         </p>
-                        {stage.actionFn && (
-                          <button
-                            type="button"
-                            onClick={() => handleAction(stage.key, allocation)}
-                            disabled={busyAllocationId === allocation.id}
-                            className="mt-2 w-full text-center px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition disabled:opacity-50 cursor-pointer"
-                          >
-                            {busyAllocationId === allocation.id ? 'Updating...' : stage.action}
-                          </button>
-                        )}
                       </div>
                     ))
                   ) : (

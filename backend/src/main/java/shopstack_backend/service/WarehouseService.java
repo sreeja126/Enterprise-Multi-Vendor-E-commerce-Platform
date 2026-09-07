@@ -166,15 +166,25 @@ private OrderRepository orderRepository;
     }
 
     // Total sellable stock for a product, summed across every active
-    // warehouse. This — not Product.stockQuantity — is what checkout gates
-    // purchasability against, since that's what can actually be picked,
-    // packed, and shipped.
+    // warehouse, MINUS units already sold but not yet manually allocated
+    // to any warehouse. That second part matters: under manual-only
+    // allocation, a freshly placed order doesn't touch WarehouseStock at
+    // all until admin allocates it — so without subtracting pending
+    // unallocated orders here, this number would overstate what's truly
+    // still purchasable, and two customers could both order the same
+    // last unit before either gets allocated.
     @Transactional(readOnly = true)
     public int getTotalAvailableStock(Long productId) {
-        return warehouseStockRepository.findByProduct_Id(productId).stream()
+        int warehouseAvailable = warehouseStockRepository.findByProduct_Id(productId).stream()
                 .filter(s -> s.getWarehouse().isActive())
                 .mapToInt(WarehouseStock::getAvailableQuantity)
                 .sum();
+
+        int pendingUnallocated = orderItemRepository != null
+                ? orderItemRepository.sumPendingUnallocatedQuantity(productId)
+                : 0;
+
+        return Math.max(0, warehouseAvailable - pendingUnallocated);
     }
 
     @Transactional(readOnly = true)
@@ -185,75 +195,98 @@ private OrderRepository orderRepository;
     }
 
     // ---------------------------------------------------------------
-    // 3. Allocation — triggered right after an order is confirmed
+    // Allocation — the ONLY way an order item ends up assigned to a
+    // warehouse. An admin picks the warehouse and quantity by hand; there
+    // is no automatic/algorithmic path anywhere else in this class.
     // ---------------------------------------------------------------
 
+    @Transactional(readOnly = true)
+    public List<WarehouseStockResponseDTO> getStockForProduct(Long productId) {
+        if (productId == null) {
+            throw new IllegalArgumentException("Product ID is required.");
+        }
+        return warehouseStockRepository.findByProduct_Id(productId).stream()
+                .map(this::toStockDTO)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
-    public void allocateOrderToWarehouses(Order order) {
-        if (order == null || order.getId() == null || order.getItems() == null) {
-            return;
+    public StockAllocationResponseDTO manuallyAllocate(Long orderItemId, Long warehouseId, Integer requestedQuantity) {
+        if (orderItemId == null) {
+            throw new IllegalArgumentException("Order item ID is required.");
         }
-       for (OrderItem item : new ArrayList<>(order.getItems())) {
-            if (item.getStatus() == OrderStatus.CANCELLED) {
-                continue;
-            }
-            // Idempotent: skip items that already have allocations (e.g. if
-            // this ever gets called more than once for the same order).
-            if (!stockAllocationRepository.findByOrderItem_Id(item.getId()).isEmpty()) {
-                continue;
-            }
-            Product product = item.getProduct();
-            if (product == null) {
-                continue;
-            }
-
-            int remaining = item.getQuantity() != null ? item.getQuantity() : 0;
-            List<WarehouseStock> candidates = warehouseStockRepository
-                    .findByProduct_IdAndAvailableQuantityGreaterThanOrderByAvailableQuantityDesc(product.getId(), 0);
-
-            boolean allocatedAny = false;
-            for (WarehouseStock stock : candidates) {
-                if (remaining <= 0) break;
-                if (!stock.getWarehouse().isActive()) continue;
-
-                int take = Math.min(remaining, stock.getAvailableQuantity());
-                stock.setAvailableQuantity(stock.getAvailableQuantity() - take);
-                stock.setAllocatedQuantity(stock.getAllocatedQuantity() + take);
-                warehouseStockRepository.save(stock);
-
-                StockAllocation allocation = new StockAllocation();
-                allocation.setOrderItem(item);
-                allocation.setWarehouse(stock.getWarehouse());
-                allocation.setQuantity(take);
-                allocation.setStatus(AllocationStatus.ALLOCATED);
-                allocation.setAllocatedAt(LocalDateTime.now());
-                stockAllocationRepository.save(allocation);
-
-                logMovement(stock.getWarehouse(), product, item, "AVAILABLE", "ALLOCATED", take,
-                        "Allocated for Order #" + order.getId());
-
-                remaining -= take;
-                allocatedAny = true;
-            }
-           
-            if (allocatedAny && item.getStatus() == OrderStatus.CONFIRMED) {
-                item.setStatus(OrderStatus.PROCESSING);
-                orderItemRepository.save(item);
-                orderStatusService.recomputeOrderStatus(order);
-            }
+        if (warehouseId == null) {
+            throw new IllegalArgumentException("A warehouse must be selected.");
         }
-    }
-@Transactional
-public void allocateExistingOrder(Long orderId) {
-    if (orderId == null) {
-        throw new IllegalArgumentException("Order ID is required.");
+
+        OrderItem item = orderItemRepository.findById(orderItemId)
+                .orElseThrow(() -> new IllegalArgumentException("Order item not found."));
+        if (item.getStatus() == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("This item has been cancelled and can't be allocated.");
+        }
+        Product product = item.getProduct();
+        if (product == null) {
+            throw new IllegalStateException("This item has no product on record.");
+        }
+
+        int alreadyAllocated = stockAllocationRepository.findByOrderItem_Id(item.getId()).stream()
+                .filter(a -> a.getStatus() != AllocationStatus.CANCELLED)
+                .mapToInt(StockAllocation::getQuantity)
+                .sum();
+        int remaining = (item.getQuantity() != null ? item.getQuantity() : 0) - alreadyAllocated;
+        if (remaining <= 0) {
+            throw new IllegalStateException("This item is already fully allocated.");
+        }
+
+        int quantity = requestedQuantity != null ? requestedQuantity : remaining;
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero.");
+        }
+        if (quantity > remaining) {
+            throw new IllegalArgumentException(
+                    "Only " + remaining + " unit(s) of this item still need allocating — can't allocate " + quantity + ".");
+        }
+
+        Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found."));
+        if (!warehouse.isActive()) {
+            throw new IllegalArgumentException("\"" + warehouse.getName() + "\" is inactive and can't receive allocations.");
+        }
+
+        WarehouseStock stock = warehouseStockRepository
+                .findByWarehouse_IdAndProduct_Id(warehouseId, product.getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "\"" + warehouse.getName() + "\" has no stock of \"" + product.getName() + "\" on record."));
+        if (stock.getAvailableQuantity() < quantity) {
+            throw new IllegalArgumentException(
+                    "\"" + warehouse.getName() + "\" only has " + stock.getAvailableQuantity() +
+                    " unit(s) of \"" + product.getName() + "\" available — can't allocate " + quantity + ".");
+        }
+
+        stock.setAvailableQuantity(stock.getAvailableQuantity() - quantity);
+        stock.setAllocatedQuantity(stock.getAllocatedQuantity() + quantity);
+        warehouseStockRepository.save(stock);
+
+        StockAllocation allocation = new StockAllocation();
+        allocation.setOrderItem(item);
+        allocation.setWarehouse(warehouse);
+        allocation.setQuantity(quantity);
+        allocation.setStatus(AllocationStatus.ALLOCATED);
+        allocation.setAllocatedAt(LocalDateTime.now());
+        StockAllocation saved = stockAllocationRepository.save(allocation);
+
+        logMovement(warehouse, product, item, "AVAILABLE", "ALLOCATED", quantity,
+                "Manually allocated by admin for Order #" + item.getOrder().getId());
+
+        if (item.getStatus() == OrderStatus.CONFIRMED) {
+            item.setStatus(OrderStatus.PROCESSING);
+            orderItemRepository.save(item);
+        }
+        orderStatusService.recomputeOrderStatus(item.getOrder());
+
+        return toAllocationDTO(saved);
     }
 
-    Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new IllegalArgumentException("Order not found."));
-
-    allocateOrderToWarehouses(order);
-}
     @Transactional
     public void releaseAllocationsForItem(OrderItem item) {
         if (item == null || item.getId() == null) return;
@@ -364,6 +397,12 @@ public void markAllocationsDelivered(OrderItem item) {
 
         stockAllocationRepository.save(allocation);
 
+        // NOTE: allocatedQuantity is NOT decremented here. It was already
+        // correctly removed back when this allocation reached
+        // READY_FOR_SHIPMENT (see markReadyForShipment above) — that's the
+        // point these units physically left the warehouse's holding area.
+        // Decrementing it again here would double-subtract the same units.
+
         logMovement(
                 allocation.getWarehouse(),
                 item.getProduct(),
@@ -381,6 +420,21 @@ public void markAllocationsDelivered(OrderItem item) {
                 .orElseThrow(() -> new IllegalArgumentException("Allocation not found."));
     }
 
+    // ---------------------------------------------------------------
+    // Warehouse-staff self-service support: confirms an allocation
+    // actually belongs to the warehouse a staff member is scoped to,
+    // before letting them pick/pack/ready it. Called by
+    // WarehouseStaffService, never exposed to the client directly.
+    // ---------------------------------------------------------------
+    @Transactional(readOnly = true)
+    public void assertWarehouseOwnsAllocation(Long allocationId, Long warehouseId) {
+        StockAllocation allocation = getAllocationOrThrow(allocationId);
+        if (allocation.getWarehouse() == null || warehouseId == null
+                || !allocation.getWarehouse().getId().equals(warehouseId)) {
+            throw new SecurityException("This item isn't assigned to your warehouse.");
+        }
+    }
+
     private void requireStatus(StockAllocation allocation, AllocationStatus required, String actionDescription) {
         if (allocation.getStatus() != required) {
             throw new IllegalStateException(
@@ -388,45 +442,9 @@ public void markAllocationsDelivered(OrderItem item) {
                     " and can't be " + actionDescription + " from that state.");
         }
     }
-   @Transactional
+   @Transactional(readOnly = true)
 public List<StockAllocationResponseDTO> getWarehouseQueue(
         Long warehouseId, AllocationStatus status) {
-
-    // Repair old orders that were created before warehouse allocation existed.
-    // Only CONFIRMED / PROCESSING items are eligible.
-    List<Order> orders = orderRepository.findAll();
-
-    for (Order order : orders) {
-
-        if (order == null || order.getItems() == null) {
-            continue;
-        }
-
-        if (order.getStatus() == OrderStatus.CANCELLED
-                || order.getStatus() == OrderStatus.DELIVERED
-                || order.getStatus() == OrderStatus.RETURNED
-                || order.getStatus() == OrderStatus.REFUNDED
-                || order.getStatus() == OrderStatus.SHIPPED) {
-            continue;
-        }
-
-        boolean needsAllocation = order.getItems().stream()
-                .anyMatch(item ->
-                        item != null
-                        && item.getStatus() != null
-                        && (item.getStatus() == OrderStatus.CONFIRMED
-                            || item.getStatus() == OrderStatus.PROCESSING)
-                        && item.getProduct() != null
-                        && item.getQuantity() != null
-                        && item.getQuantity() > 0
-                        && stockAllocationRepository
-                                .findByOrderItem_Id(item.getId())
-                                .isEmpty());
-
-        if (needsAllocation) {
-            allocateOrderToWarehouses(order);
-        }
-    }
 
     return stockAllocationRepository
             .findByWarehouse_IdAndStatusOrderByAllocatedAtAsc(
@@ -466,6 +484,18 @@ public List<StockAllocationResponseDTO> getAllocationsForOrder(Long orderId) {
                         && a.getOrderItem().getId().equals(item.getId()));
 
         if (alreadyHasAllocation) {
+            continue;
+        }
+
+        // CONFIRMED (and CANCELLED) items with no allocation aren't
+        // "historical" data — under manual-only allocation, CONFIRMED
+        // with nothing allocated yet is the normal, expected state for
+        // every brand-new order. Only fabricate a synthetic row for
+        // items that somehow progressed PAST that point (PROCESSING,
+        // SHIPPED, DELIVERED, RETURNED, REFUNDED) without ever getting a
+        // real StockAllocation — i.e. genuinely old orders placed before
+        // the warehouse system existed.
+        if (item.getStatus() == OrderStatus.CONFIRMED || item.getStatus() == OrderStatus.CANCELLED) {
             continue;
         }
 

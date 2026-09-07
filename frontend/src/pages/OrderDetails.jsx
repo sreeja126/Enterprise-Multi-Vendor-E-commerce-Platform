@@ -28,8 +28,7 @@ const REFUND_STATUS_STYLES = {
 
 const ORDER_STEPS = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"];
 
-// A customer can only cancel while an item hasn't started being fulfilled
-// yet — matches the backend's own rule in OrderService.cancelOrderItem.
+// Allow cancellations up to CONFIRMED or until warehouse allocation starts
 const CANCELLABLE_STATUSES = new Set(["PENDING", "CONFIRMED"]);
 
 function OrderDetails() {
@@ -39,12 +38,9 @@ function OrderDetails() {
   const justPlaced = location.state?.justPlaced;
 
   const [order, setOrder] = useState(null);
-  // Maps orderItemId -> that item's return request (if any exists at all),
-  // so the UI can show its real status instead of just re-showing the
-  // "Request Return" button as if nothing had happened.
   const [returnsByItemId, setReturnsByItemId] = useState({});
   const [loading, setLoading] = useState(true);
-  const [cancellingId, setCancellingId] = useState(null); // item id, or "order" for whole-order cancel
+  const [cancellingId, setCancellingId] = useState(null);
 
   useEffect(() => {
     fetchOrder();
@@ -93,7 +89,7 @@ function OrderDetails() {
 
   const handleRequestReturn = async (itemId) => {
     const reason = window.prompt("Why are you returning this item?");
-    if (reason === null) return; // cancelled the prompt
+    if (reason === null) return;
     if (!reason.trim()) {
       alert("Please provide a reason for the return.");
       return;
@@ -111,7 +107,6 @@ function OrderDetails() {
       setCancellingId(null);
     }
   };
-
 
   const handleCancelWholeOrder = async () => {
     if (!window.confirm("Cancel this entire order? This can't be undone.")) return;
@@ -156,11 +151,23 @@ function OrderDetails() {
     order.paymentMethod === "cod" ||
     order.payment?.method === "COD";
 
-  const currentStepIndex = ORDER_STEPS.indexOf(order.status);
-  const isCancelled = order.status === "CANCELLED" || order.status === "RETURNED";
+  /**
+   * ALLOCATION-AWARE DISPLAY STATUS
+   * Forces the UI to show 'CONFIRMED' if the order hasn't been manually assigned a warehouse yet.
+   */
+  const isAllocated =
+    order.allocationStatus === "ALLOCATED" ||
+    order.warehouseId ||
+    (order.items || []).some((item) => item.warehouseId || item.allocatedQuantity > 0);
 
-  const anyItemCancellable = (order.items || []).some((item) =>
-    CANCELLABLE_STATUSES.has(item.status)
+  const displayStatus =
+    !isAllocated && order.status === "PROCESSING" ? "CONFIRMED" : order.status;
+
+  const currentStepIndex = ORDER_STEPS.indexOf(displayStatus);
+  const isCancelled = displayStatus === "CANCELLED" || displayStatus === "RETURNED";
+
+  const anyItemCancellable = (order.items || []).some(
+    (item) => CANCELLABLE_STATUSES.has(item.status) || (!isAllocated && item.status === "PROCESSING")
   );
 
   return (
@@ -187,7 +194,7 @@ function OrderDetails() {
           )}
         </div>
 
-        {/* Confirmation banner when coming directly from checkout */}
+        {/* Confirmation banner */}
         {justPlaced && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl p-4 mb-6 flex items-center gap-3 shadow-xs">
             <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
@@ -212,10 +219,10 @@ function OrderDetails() {
                 </h1>
                 <span
                   className={`text-xs font-bold px-3 py-1 rounded-full border ${
-                    STATUS_STYLES[order.status] || "bg-stone-100 text-stone-700"
+                    STATUS_STYLES[displayStatus] || "bg-stone-100 text-stone-700"
                   }`}
                 >
-                  {order.status}
+                  {displayStatus}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
@@ -271,8 +278,6 @@ function OrderDetails() {
 
         {/* 2-Column Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-          {/* Left Column: Items & Payment Details */}
           <div className="lg:col-span-7 space-y-6">
 
             {/* Items */}
@@ -284,8 +289,11 @@ function OrderDetails() {
               </div>
               <div className="divide-y divide-stone-100">
                 {order.items?.map((item, idx) => {
-                  const itemCancellable = CANCELLABLE_STATUSES.has(item.status);
+                  const itemCancellable =
+                    CANCELLABLE_STATUSES.has(item.status) || (!isAllocated && item.status === "PROCESSING");
                   const existingReturn = returnsByItemId[item.id];
+                  const itemDisplayStatus =
+                    !isAllocated && item.status === "PROCESSING" ? "CONFIRMED" : item.status;
 
                   return (
                     <div key={item.id || idx} className="p-5">
@@ -297,13 +305,13 @@ function OrderDetails() {
                           <div>
                             <p className="font-semibold text-slate-900 text-sm">{item.productName}</p>
                             <p className="text-xs text-slate-500">₹{item.priceAtPurchase} × {item.quantity}</p>
-                            {item.status && (
+                            {itemDisplayStatus && (
                               <span
                                 className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                  STATUS_STYLES[item.status] || "bg-stone-100 text-stone-600 border-stone-200"
+                                  STATUS_STYLES[itemDisplayStatus] || "bg-stone-100 text-stone-600 border-stone-200"
                                 }`}
                               >
-                                {item.status}
+                                {itemDisplayStatus}
                               </span>
                             )}
                           </div>
@@ -332,9 +340,7 @@ function OrderDetails() {
                         </div>
                       </div>
 
-                      {/* Refund from a straight cancellation (no return
-                          request involved) — happens when a Razorpay-paid
-                          item is cancelled before delivery. */}
+                      {/* Refund section */}
                       {item.status === "CANCELLED" && item.refund && (
                         <div className="mt-3 ml-13 bg-stone-50 border border-stone-100 rounded-xl p-3 text-xs">
                           <div className="flex items-center gap-2">
@@ -360,10 +366,7 @@ function OrderDetails() {
                         </div>
                       )}
 
-                      {/* Return/refund status — this is the piece that was
-                          missing entirely: once a return is requested, this
-                          shows its real status instead of the page looking
-                          unchanged. */}
+                      {/* Return section */}
                       {existingReturn && (
                         <div className="mt-3 ml-13 bg-stone-50 border border-stone-100 rounded-xl p-3 text-xs">
                           <div className="flex items-center gap-2 mb-1">
@@ -414,7 +417,7 @@ function OrderDetails() {
               </div>
             </div>
 
-            {/* Payment Details */}
+            {/* Payment Info */}
             <div className="bg-white rounded-2xl border border-stone-200/80 p-6 shadow-xs">
               <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span>💳</span> Payment Information
@@ -453,7 +456,7 @@ function OrderDetails() {
             </div>
           </div>
 
-          {/* Right Column: Address & Total Summary */}
+          {/* Right Column */}
           <div className="lg:col-span-5 space-y-6">
 
             {/* Address */}
@@ -508,7 +511,6 @@ function OrderDetails() {
             </div>
 
           </div>
-
         </div>
 
       </div>

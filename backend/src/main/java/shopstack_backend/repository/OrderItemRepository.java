@@ -29,4 +29,23 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     WHERE oi.product.vendor.id = :vendorId
 """)
 BigDecimal calculateVendorSales(@Param("vendorId") Long vendorId);
+
+    // Used to block hard-deleting a product that has real order history —
+    // that must be blocked, never silently cascaded away.
+    boolean existsByProduct_Id(Long productId);
+
+    // Units already sold (order placed) for this product but not yet
+    // manually allocated to a warehouse. Under manual-only allocation, a
+    // CONFIRMED item has, by definition, no StockAllocation yet — this is
+    // exactly the quantity that's spoken for but not yet physically
+    // reserved at the warehouse level. Without subtracting this, two
+    // different customers could both "successfully" order the same last
+    // unit before admin ever allocates either of them.
+    @Query("""
+        SELECT COALESCE(SUM(oi.quantity), 0)
+        FROM OrderItem oi
+        WHERE oi.product.id = :productId
+        AND oi.status = shopstack_backend.entity.OrderStatus.CONFIRMED
+    """)
+    int sumPendingUnallocatedQuantity(@Param("productId") Long productId);
 }

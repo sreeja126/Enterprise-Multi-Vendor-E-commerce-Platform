@@ -34,7 +34,7 @@ public class CouponService {
     @Autowired
     private CouponUsageRepository couponUsageRepository;
     @Transactional(readOnly = true)
-    public CouponEvaluationResult validate(String rawCode, BigDecimal subtotal) {
+    public CouponEvaluationResult validate(String rawCode, BigDecimal subtotal, String customerEmail) {
         if (rawCode == null || rawCode.isBlank()) {
             throw new IllegalArgumentException("Please enter a coupon code.");
         }
@@ -65,6 +65,16 @@ public class CouponService {
             throw new IllegalArgumentException("This coupon has reached its usage limit.");
         }
 
+        if (coupon.getPerCustomerLimit() != null && customerEmail != null) {
+            long usedByThisCustomer = couponUsageRepository.countByCoupon_IdAndUser_Email(coupon.getId(), customerEmail);
+            if (usedByThisCustomer >= coupon.getPerCustomerLimit()) {
+                throw new IllegalArgumentException(
+                        coupon.getPerCustomerLimit() == 1
+                                ? "You've already used this coupon."
+                                : "You've already used this coupon the maximum " + coupon.getPerCustomerLimit() + " time(s).");
+            }
+        }
+
         BigDecimal discountAmount = calculateDiscount(coupon, subtotal);
         return new CouponEvaluationResult(coupon, discountAmount);
     }
@@ -92,8 +102,8 @@ public class CouponService {
         return discount.setScale(2, RoundingMode.HALF_UP);
     }
     @Transactional(readOnly = true)
-    public ApplyCouponResponseDTO preview(String rawCode, BigDecimal subtotal) {
-        CouponEvaluationResult eval = validate(rawCode, subtotal);
+    public ApplyCouponResponseDTO preview(String rawCode, BigDecimal subtotal, String customerEmail) {
+        CouponEvaluationResult eval = validate(rawCode, subtotal, customerEmail);
         Coupon coupon = eval.getCoupon();
         BigDecimal roundedSubtotal = subtotal.setScale(2, RoundingMode.HALF_UP);
 
@@ -125,7 +135,7 @@ public class CouponService {
         couponUsageRepository.save(usage);
     }
     @Transactional(readOnly = true)
-    public List<AvailableCouponDTO> getAvailableCoupons(BigDecimal subtotal) {
+    public List<AvailableCouponDTO> getAvailableCoupons(BigDecimal subtotal, String customerEmail) {
         BigDecimal safeSubtotal = subtotal != null ? subtotal : BigDecimal.ZERO;
         List<Coupon> validCoupons = couponRepository.findCurrentlyValidCoupons(LocalDate.now());
 
@@ -139,12 +149,22 @@ public class CouponService {
             dto.setMaxDiscount(coupon.getMaxDiscount());
             dto.setExpiryDate(coupon.getExpiryDate());
 
-            boolean eligible = coupon.getMinOrderAmount() == null
+            boolean meetsMinOrder = coupon.getMinOrderAmount() == null
                     || safeSubtotal.compareTo(coupon.getMinOrderAmount()) >= 0;
+
+            boolean withinPersonalLimit = true;
+            if (coupon.getPerCustomerLimit() != null && customerEmail != null) {
+                long usedByThisCustomer = couponUsageRepository.countByCoupon_IdAndUser_Email(coupon.getId(), customerEmail);
+                withinPersonalLimit = usedByThisCustomer < coupon.getPerCustomerLimit();
+            }
+
+            boolean eligible = meetsMinOrder && withinPersonalLimit;
             dto.setEligible(eligible);
 
             if (eligible) {
                 dto.setEstimatedDiscount(calculateDiscount(coupon, safeSubtotal));
+            } else if (!withinPersonalLimit) {
+                dto.setMessage("You've already used this coupon.");
             } else {
                 BigDecimal shortfall = coupon.getMinOrderAmount().subtract(safeSubtotal)
                         .setScale(2, RoundingMode.HALF_UP);
@@ -239,6 +259,9 @@ public class CouponService {
         if (request.getUsageLimit() != null && request.getUsageLimit() < 1) {
             throw new IllegalArgumentException("Usage limit must be at least 1 (leave it blank for unlimited).");
         }
+        if (request.getPerCustomerLimit() != null && request.getPerCustomerLimit() < 1) {
+            throw new IllegalArgumentException("Per-customer limit must be at least 1 (leave it blank for no cap).");
+        }
     }
 
     private void applyRequestToEntity(Coupon coupon, CouponRequestDTO request) {
@@ -250,6 +273,7 @@ public class CouponService {
         coupon.setStartDate(request.getStartDate());
         coupon.setExpiryDate(request.getExpiryDate());
         coupon.setUsageLimit(request.getUsageLimit());
+        coupon.setPerCustomerLimit(request.getPerCustomerLimit());
         coupon.setActive(request.getActive() == null || request.getActive());
     }
 
@@ -264,6 +288,7 @@ public class CouponService {
         dto.setStartDate(coupon.getStartDate());
         dto.setExpiryDate(coupon.getExpiryDate());
         dto.setUsageLimit(coupon.getUsageLimit());
+        dto.setPerCustomerLimit(coupon.getPerCustomerLimit());
         dto.setUsageCount(coupon.getUsageCount());
         dto.setActive(coupon.isActive());
         dto.setComputedStatus(computeStatus(coupon));

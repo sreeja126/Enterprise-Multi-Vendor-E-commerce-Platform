@@ -117,9 +117,10 @@ BigDecimal lineTotal = finalPrice
             orderItems.add(orderItem);
             total = total.add(lineTotal);
             // Stock is no longer decremented here — it now lives entirely at
-            // the warehouse level (WarehouseStock), moved from available to
-            // allocated by warehouseService.allocateOrderToWarehouses below,
-            // right after the order is saved and confirmed.
+            // the warehouse level (WarehouseStock). Allocating it to a
+            // specific warehouse is now a manual, admin-only action
+            // (WarehouseController/WarehouseStaffController) rather than
+            // something that happens automatically when the order is placed.
         }
         order.setItems(orderItems);
         total = total.setScale(2, java.math.RoundingMode.HALF_UP);
@@ -127,7 +128,7 @@ BigDecimal lineTotal = finalPrice
         CouponService.CouponEvaluationResult couponEval = null;
         BigDecimal discountAmount = BigDecimal.ZERO;
         if (couponCode != null && !couponCode.isBlank()) {
-            couponEval = couponService.validate(couponCode, total);
+            couponEval = couponService.validate(couponCode, total, email);
             couponService.reserveUsage(couponEval.getCoupon());
             discountAmount = couponEval.getDiscountAmount();
         }
@@ -142,7 +143,8 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
-        warehouseService.allocateOrderToWarehouses(saved);
+        // No automatic warehouse allocation here — admin allocates each
+        // item to a warehouse manually from the Admin Orders screen.
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
@@ -218,8 +220,9 @@ BigDecimal lineTotal = finalPrice
             orderItem.setStatus(OrderStatus.CONFIRMED);
             orderItems.add(orderItem);
       total = total.add(lineTotal);
-            // Stock decrement now happens exclusively at the warehouse level
-            // (see warehouseService.allocateOrderToWarehouses below).
+            // Stock decrement now happens exclusively at the warehouse level,
+            // once admin manually allocates the item to one (no longer
+            // automatic here).
         }
         order.setItems(orderItems);
         total = total.setScale(2, java.math.RoundingMode.HALF_UP);
@@ -227,7 +230,7 @@ BigDecimal lineTotal = finalPrice
         CouponService.CouponEvaluationResult couponEval = null;
         BigDecimal discountAmount = BigDecimal.ZERO;
         if (couponCode != null && !couponCode.isBlank()) {
-            couponEval = couponService.validate(couponCode, total);
+            couponEval = couponService.validate(couponCode, total, email);
             couponService.reserveUsage(couponEval.getCoupon());
             discountAmount = couponEval.getDiscountAmount();
         }
@@ -242,7 +245,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
-        warehouseService.allocateOrderToWarehouses(saved);
+        // No automatic warehouse allocation — admin allocates manually.
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
@@ -300,7 +303,7 @@ BigDecimal lineTotal = finalPrice
         CouponService.CouponEvaluationResult couponEval = null;
         BigDecimal discountAmount = BigDecimal.ZERO;
         if (couponCode != null && !couponCode.isBlank()) {
-            couponEval = couponService.validate(couponCode, lineTotal);
+            couponEval = couponService.validate(couponCode, lineTotal, email);
             couponService.reserveUsage(couponEval.getCoupon());
             discountAmount = couponEval.getDiscountAmount();
         }
@@ -315,12 +318,12 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
-        warehouseService.allocateOrderToWarehouses(saved);
+        // No automatic warehouse allocation — admin allocates manually.
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
         }
-        // Stock decrement now happens exclusively at the warehouse level
-        // (see warehouseService.allocateOrderToWarehouses above).
+        // Stock decrement now happens exclusively at the warehouse level,
+        // once admin manually allocates the item to one.
         List<Order> userOrders = orderRepository.findByUserEmailOrderByCreatedAtAsc(email);
         OrderResponseDTO dto = mapToDTO(saved, payment);
         dto.setCustomerOrderNumber(userOrders.size());
@@ -411,6 +414,22 @@ public OrderResponseDTO markItemDelivered(Long orderItemId) {
             .findByOrderId(order.getId())
             .orElse(null);
 
+    // COD payments are recorded PENDING at order time since nothing has
+    // actually been collected yet. Cash changes hands once, at final
+    // delivery — so only flip to SUCCESS once every item on the order has
+    // actually been delivered, not just this one (a multi-item order could
+    // still have other items in transit). Without this, a COD payment's
+    // status would otherwise stay PENDING forever even long after it was
+    // genuinely paid.
+    if (payment != null
+            && "COD".equalsIgnoreCase(payment.getMethod())
+            && payment.getStatus() == PaymentStatus.PENDING
+            && order.getStatus() == OrderStatus.DELIVERED) {
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setPaidAt(LocalDateTime.now());
+        paymentRepository.save(payment);
+    }
+
     return mapToDTO(order, payment);
 }
   @Transactional
@@ -462,6 +481,12 @@ public OrderResponseDTO markItemDelivered(Long orderItemId) {
         commissionService.syncCommissionsForOrder(item.getOrder());
         if (newStatus == OrderStatus.CANCELLED) {
             warehouseService.releaseAllocationsForItem(item);
+            // A vendor cancelling a paid item must trigger the same refund
+            // a customer-initiated cancellation would — otherwise a
+            // vendor-side cancellation silently keeps the customer's money
+            // with no order to show for it.
+            Payment payment = paymentRepository.findByOrderId(item.getOrder().getId()).orElse(null);
+            refundIfPaidOnline(item, payment);
         }
         return mapToVendorDTO(item);
     }

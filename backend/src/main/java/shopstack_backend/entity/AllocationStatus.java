@@ -6,5 +6,6 @@ public enum AllocationStatus {
     PACKED,
     READY_FOR_SHIPMENT,
     DELIVERED,
-    CANCELLED
+    CANCELLED,
+    SHIPPED
 }

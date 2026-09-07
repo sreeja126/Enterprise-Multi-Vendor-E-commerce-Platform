@@ -33,6 +33,26 @@ public class CartService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired(required = false)
+    private WarehouseService warehouseService;
+
+    // Real purchasable stock for a product — the same number checkout
+    // gates against (sum of active-warehouse availableQuantity, minus
+    // orders already placed but not yet allocated). Product.stockQuantity
+    // is the vendor's UNDISTRIBUTED pool, not what a customer can actually
+    // buy, so the cart must never validate or display against that number —
+    // doing so would let a fully-distributed (stockQuantity=0) product get
+    // rejected here while checkout would happily accept it, or the reverse.
+    private int getRealAvailableStock(Product product) {
+        if (product == null || product.getId() == null) {
+            return 0;
+        }
+        if (warehouseService != null) {
+            return warehouseService.getTotalAvailableStock(product.getId());
+        }
+        return product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+    }
+
     @Transactional
     public Cart getOrCreateCart(String email) {
 
@@ -74,9 +94,7 @@ public class CartService {
                 .orElseThrow(() ->
                         new RuntimeException("Product not found"));
 
-        int available = product.getStockQuantity() != null
-                ? product.getStockQuantity()
-                : 0;
+        int available = getRealAvailableStock(product);
 
         if (available <= 0) {
             throw new IllegalStateException(
@@ -143,9 +161,7 @@ public class CartService {
 
         Product product = item.getProduct();
 
-        int available = product.getStockQuantity() != null
-                ? product.getStockQuantity()
-                : 0;
+        int available = getRealAvailableStock(product);
 
         if (quantity > available) {
             throw new IllegalStateException(
@@ -265,10 +281,7 @@ public class CartService {
             // Quantity
             itemDto.setQuantity(item.getQuantity());
 
-            int availableStock =
-                    product.getStockQuantity() != null
-                            ? product.getStockQuantity()
-                            : 0;
+            int availableStock = getRealAvailableStock(product);
 
             itemDto.setAvailableStock(availableStock);
             BigDecimal lineTotal =

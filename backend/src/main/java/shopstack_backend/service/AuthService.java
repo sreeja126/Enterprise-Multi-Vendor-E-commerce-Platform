@@ -38,16 +38,24 @@ public class AuthService {
     private EmailService emailService;
 
     // Register
-    public String register(RegisterRequest request) {
+    public AuthResponse register(RegisterRequest request) {
 
-        if (userRepository.existsByEmail(request.getEmail())) {
-            return "Email already exists!";
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            return new AuthResponse(null, null, "Email is required.");
+        }
+        // Normalize so "Test@Gmail.com" and "test@gmail.com" are treated as
+        // the same account — case differences alone shouldn't let someone
+        // register twice with what's really the same email address.
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+            return new AuthResponse(null, null, "An account with this email already exists. Please log in instead.");
         }
 
         User user = new User();
 
         user.setFullName(request.getFullName());
-        user.setEmail(request.getEmail());
+        user.setEmail(normalizedEmail);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRole(request.getRole());
         userRepository.save(user);
@@ -55,16 +63,24 @@ public class AuthService {
             Vendor vendor = new Vendor();
             vendor.setName(user.getFullName());
             vendor.setEmail(user.getEmail());
-            vendor.setStatus("APPROVED");
+            // Requires admin approval before this vendor can list products —
+            // see AdminController's /vendors/{id}/approve|reject.
+            vendor.setStatus("PENDING");
             vendor.setUser(user);
             vendorRepository.save(vendor);
         }
-        return "Registration Successful";
+
+        // Log the new account straight in, same as a successful login would —
+        // this is what lets the navbar/UI update immediately after registering
+        // instead of silently doing nothing until a separate manual login.
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponse(token, user.getRole().name(), "Registration Successful");
     }
     // Login
     public AuthResponse login(LoginRequest request) {
 
-        Optional<User> optionalUser = userRepository.findByEmail(request.getEmail());
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : null;
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(normalizedEmail);
 
         if (optionalUser.isEmpty()) {
             return new AuthResponse(null, null, "User not found");
@@ -82,7 +98,8 @@ public class AuthService {
     }
     public String forgotPassword(String email) {
 
-        Optional<User> optionalUser = userRepository.findByEmail(email);
+        String normalizedEmail = email != null ? email.trim().toLowerCase() : null;
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(normalizedEmail);
 
         if (optionalUser.isPresent()) {
 

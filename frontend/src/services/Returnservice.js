@@ -60,20 +60,6 @@ export const rejectReturn = async (
   return response.data;
 };
 
-// result: "ACCEPTED" or "DAMAGED"
-export const performQualityCheck = async (
-  returnRequestId,
-  result,
-  note
-) => {
-  const response = await api.put(
-    `/admin/returns/${returnRequestId}/qc`,
-    { result, note }
-  );
-
-  return response.data;
-};
-
 const returnService = {
   requestReturn,
   getMyReturnRequests,
@@ -81,7 +67,6 @@ const returnService = {
   getAllReturnRequests,
   approveReturn,
   rejectReturn,
-  performQualityCheck,
 };
 
 export default returnService;

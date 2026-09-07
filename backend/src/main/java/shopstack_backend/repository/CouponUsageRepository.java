@@ -14,6 +14,11 @@ public interface CouponUsageRepository extends JpaRepository<CouponUsage, Long> 
 
     List<CouponUsage> findByCoupon_IdOrderByUsedAtDesc(Long couponId);
 
+    // How many times THIS customer specifically has used this coupon —
+    // enforces a per-customer cap independent of (and in addition to) the
+    // coupon's global usageLimit.
+    long countByCoupon_IdAndUser_Email(Long couponId, String email);
+
     @Query("SELECT COALESCE(SUM(cu.discountAmount), 0) FROM CouponUsage cu WHERE cu.coupon.id = :couponId")
     BigDecimal sumDiscountByCouponId(@Param("couponId") Long couponId);
 }

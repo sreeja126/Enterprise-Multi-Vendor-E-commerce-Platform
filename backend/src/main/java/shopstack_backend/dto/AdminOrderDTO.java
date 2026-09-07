@@ -2,6 +2,7 @@ package shopstack_backend.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class AdminOrderDTO {
 
@@ -12,6 +13,10 @@ public class AdminOrderDTO {
     private String status;
     private LocalDateTime createdAt;
     private int itemCount;
+
+    // Full line-item detail — needed so admin can see and manually
+    // allocate each item to a warehouse (AdminOrders / ManualAllocationPanel).
+    private List<AdminOrderItemDTO> items;
 
     public AdminOrderDTO() {
     }
@@ -88,5 +93,13 @@ public class AdminOrderDTO {
 
     public void setItemCount(int itemCount) {
         this.itemCount = itemCount;
+    }
+
+    public List<AdminOrderItemDTO> getItems() {
+        return items;
+    }
+
+    public void setItems(List<AdminOrderItemDTO> items) {
+        this.items = items;
     }
 }

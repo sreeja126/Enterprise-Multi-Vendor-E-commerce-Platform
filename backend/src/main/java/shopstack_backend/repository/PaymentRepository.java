@@ -8,4 +8,8 @@ import java.util.Optional;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByOrderId(Long orderId);
+
+    // Guards against a double-submitted/replayed verification request
+    // creating two separate orders from one actual Razorpay payment.
+    boolean existsByTransactionId(String transactionId);
 }

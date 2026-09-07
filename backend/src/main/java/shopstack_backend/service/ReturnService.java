@@ -46,6 +46,12 @@ public class ReturnService {
     @Autowired(required = false)
     private ProductService productService;
 
+    @Autowired
+    private OrderStatusService orderStatusService;
+
+    @Autowired
+    private CommissionService commissionService;
+
     // Customer requests a return — only allowed once an item has actually
     // been DELIVERED (before that, cancellation is the right tool), and
     // only one active request per item.
@@ -62,8 +68,10 @@ public class ReturnService {
                     "This item is currently " + item.getStatus() + " — cancel it instead if it hasn't shipped yet.");
         }
 
-        if (returnRequestRepository.existsByOrderItemId(orderItemId)) {
-            throw new IllegalStateException("A return request already exists for this item.");
+        if (returnRequestRepository.existsByOrderItem_IdAndStatusIn(
+                orderItemId, List.of(ReturnStatus.REQUESTED, ReturnStatus.QC_PENDING, ReturnStatus.COMPLETED))) {
+            throw new IllegalStateException(
+                    "A return request already exists for this item.");
         }
 
         if (reason == null || reason.isBlank()) {
@@ -104,6 +112,30 @@ public class ReturnService {
         return returnRequestRepository.findAllByOrderByRequestedAtDesc().stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
+    }
+
+    // Warehouse staff's QC inbox: returns approved by admin, physically
+    // routed to their warehouse, and still awaiting inspection.
+    @Transactional(readOnly = true)
+    public List<ReturnRequestResponseDTO> getReturnsForWarehouseQC(Long warehouseId) {
+        return returnRequestRepository
+                .findByAssignedWarehouse_IdAndStatusOrderByRequestedAtAsc(warehouseId, ReturnStatus.QC_PENDING)
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // Confirms a return request was actually routed to this warehouse
+    // before letting its staff record a QC result on it. Called by
+    // WarehouseStaffService, never exposed to the client directly.
+    @Transactional(readOnly = true)
+    public void assertWarehouseOwnsReturn(Long returnRequestId, Long warehouseId) {
+        ReturnRequest request = returnRequestRepository.findById(returnRequestId)
+                .orElseThrow(() -> new IllegalArgumentException("Return request not found."));
+        if (request.getAssignedWarehouse() == null || warehouseId == null
+                || !request.getAssignedWarehouse().getId().equals(warehouseId)) {
+            throw new SecurityException("This return isn't assigned to your warehouse.");
+        }
     }
     @Transactional
     public ReturnRequestResponseDTO approveReturn(Long returnRequestId, String resolutionNote) {
@@ -235,6 +267,18 @@ public class ReturnService {
         request.setStatus(ReturnStatus.COMPLETED);
         request.setResolvedAt(request.getResolvedAt() != null ? request.getResolvedAt() : LocalDateTime.now());
         returnRequestRepository.save(request);
+
+        // The item just left the normal PENDING→DELIVERED progression —
+        // make sure the parent order's overall status reflects that too
+        // (e.g. flips to REFUNDED once every item on it has been refunded),
+        // instead of staying stuck on its last pre-return status.
+        orderStatusService.recomputeOrderStatus(item.getOrder());
+
+        // The vendor's commission on this specific item is no longer real
+        // revenue — recalculate it now rather than leaving the commission
+        // dashboard (and any "mark as paid" action) reflecting a sale that
+        // was just refunded.
+        commissionService.syncCommissionsForOrder(item.getOrder());
     }
 
     private ReturnRequestResponseDTO mapToDTO(ReturnRequest request) {

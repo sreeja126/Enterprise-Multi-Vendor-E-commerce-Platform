@@ -3,7 +3,6 @@ import {
   getAllReturnRequests,
   approveReturn,
   rejectReturn,
-  performQualityCheck,
 } from '../../services/returnService';
 
 const STATUS_STYLES = {
@@ -113,22 +112,6 @@ const handleApprove = async (id) => {
     }
   };
 
-  const handleQc = async (id, result) => {
-    const label = result === 'ACCEPTED' ? 'accept and restock' : 'mark as damaged/quarantined';
-    if (!window.confirm(`Confirm: ${label} this item? The customer will be refunded either way.`)) return;
-    const note = window.prompt('QC note (optional):') || '';
-    setBusyId(id);
-    setError('');
-    try {
-      const updated = await performQualityCheck(id, result, note);
-      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    } catch (err) {
-      setError(err.response?.data || 'Failed to record QC result.');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const formatDateTime = (value) => {
     if (!value) return '\u2014';
     const d = new Date(value);
@@ -149,7 +132,7 @@ const handleApprove = async (id) => {
             Returns &amp; Quality Control
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Review return requests, then confirm the warehouse's inspection once items arrive back.
+            Review return requests and route approved ones to the assigned warehouse. Physical inspection (QC) is handled by that warehouse's own staff.
           </p>
         </div>
 
@@ -260,21 +243,8 @@ const handleApprove = async (id) => {
                 )}
 
                 {req.status === 'QC_PENDING' && (
-                  <div className="flex gap-2 pt-2 border-t border-stone-100">
-                    <button
-                      onClick={() => handleQc(req.id, 'ACCEPTED')}
-                      disabled={busyId === req.id}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-60 cursor-pointer"
-                    >
-                      {busyId === req.id ? 'Processing…' : 'Accept — Restock'}
-                    </button>
-                    <button
-                      onClick={() => handleQc(req.id, 'DAMAGED')}
-                      disabled={busyId === req.id}
-                      className="px-4 py-2 rounded-lg text-sm font-medium border border-rose-200 text-rose-600 hover:bg-rose-50 transition disabled:opacity-60 cursor-pointer"
-                    >
-                      Damaged — Quarantine
-                    </button>
+                  <div className="pt-2 border-t border-stone-100 text-xs text-slate-500">
+                    Awaiting inspection by {req.assignedWarehouseName || 'the assigned warehouse'}'s staff.
                   </div>
                 )}
               </div>

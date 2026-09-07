@@ -12,4 +12,9 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
     List<StockMovement> findByWarehouse_IdOrderByMovedAtDesc(Long warehouseId);
 
     List<StockMovement> findAllByOrderByMovedAtDesc();
+
+    // Cleared along with a product being permanently deleted — this is an
+    // operational log scoped to that product, not a customer-facing or
+    // financial record like an order.
+    void deleteByProduct_Id(Long productId);
 }

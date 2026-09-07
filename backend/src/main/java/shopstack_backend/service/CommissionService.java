@@ -60,7 +60,13 @@ public class CommissionService {
         Map<Long, Vendor> vendorsById = new LinkedHashMap<>();
         Map<Long, BigDecimal> salesByVendorId = new LinkedHashMap<>();
         for (OrderItem item : order.getItems()) {
-            if (item.getStatus() == OrderStatus.CANCELLED) {
+            // Cancelled, returned, and refunded items no longer represent
+            // real revenue — excluding only CANCELLED here would leave a
+            // vendor's commission (and the platform's cut) permanently
+            // overstated for every item a customer successfully returns.
+            if (item.getStatus() == OrderStatus.CANCELLED
+                    || item.getStatus() == OrderStatus.RETURNED
+                    || item.getStatus() == OrderStatus.REFUNDED) {
                 continue;
             }
             Product product = item.getProduct();
@@ -103,7 +109,8 @@ public class CommissionService {
         }
 
         // Anything left in existingByVendorId belonged to a vendor whose
-        // items were all cancelled since the last sync — void it out.
+        // items were all cancelled, returned, or refunded since the last
+        // sync — void it out.
         BigDecimal zero = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         for (Commission leftover : existingByVendorId.values()) {
             leftover.setSaleAmount(zero);

@@ -11,6 +11,7 @@ import shopstack_backend.repository.RefundRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class RefundService {
@@ -24,7 +25,7 @@ public class RefundService {
     @Autowired
     private RazorpayClient razorpayClient;
 
-   
+
     public Refund processRefund(OrderItem item) {
 
         Payment payment = paymentRepository
@@ -42,55 +43,11 @@ public class RefundService {
 
         refund.setAmount(refundAmount);
 
-     
         if (payment != null
                 && "RAZORPAY".equalsIgnoreCase(payment.getMethod())) {
 
             refund.setMethod("RAZORPAY");
-
-            try {
-
-             
-                long amountInPaise = refundAmount
-                        .setScale(2)
-                        .movePointRight(2)
-                        .longValueExact();
-
-                JSONObject options = new JSONObject();
-
-                options.put("amount", amountInPaise);
-
-                com.razorpay.Refund razorpayRefund =
-                        razorpayClient.payments.refund(
-                                payment.getTransactionId(),
-                                options
-                        );
-
-                // Razorpay refund ID
-                refund.setGatewayRefundId(
-                        razorpayRefund.get("id")
-                );
-
-                refund.setStatus(
-                        RefundStatus.PROCESSED
-                );
-
-                refund.setProcessedAt(
-                        LocalDateTime.now()
-                );
-
-            } catch (Exception e) {
-
-               e.printStackTrace();
-
-    refund.setStatus(RefundStatus.FAILED);
-
-    refund.setFailureReason(
-            e.getMessage() != null
-                    ? e.getMessage()
-                    : e.getClass().getName()
-    );
-            }
+            attemptRazorpayRefund(refund, payment.getTransactionId(), refundAmount);
 
         } else {
 
@@ -110,5 +67,88 @@ public class RefundService {
         }
 
         return refundRepository.save(refund);
+    }
+
+    // ---------------------------------------------------------------
+    // Admin: visibility into, and recovery from, a refund whose actual
+    // gateway call failed even though the customer's return/cancellation
+    // was already processed on our side. Without this, a FAILED refund
+    // just sits invisibly in the database forever — the order shows
+    // REFUNDED to the customer while no money has actually moved.
+    // ---------------------------------------------------------------
+
+    public List<Refund> getFailedRefunds() {
+        return refundRepository.findByStatusOrderByProcessedAtDesc(RefundStatus.FAILED);
+    }
+
+    public Refund retryRefund(Long refundId) {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund not found."));
+
+        if (refund.getStatus() == RefundStatus.PROCESSED) {
+            throw new IllegalStateException("This refund has already been processed.");
+        }
+
+        if (!"RAZORPAY".equalsIgnoreCase(refund.getMethod())) {
+            // Non-gateway refunds (COD/MANUAL) don't have anything to
+            // retry against an API — just mark it handled.
+            refund.setStatus(RefundStatus.PROCESSED);
+            refund.setProcessedAt(LocalDateTime.now());
+            refund.setFailureReason(null);
+            return refundRepository.save(refund);
+        }
+
+        Payment payment = paymentRepository
+                .findByOrderId(refund.getOrderItem().getOrder().getId())
+                .orElseThrow(() -> new IllegalStateException("No payment record found for this order."));
+
+        attemptRazorpayRefund(refund, payment.getTransactionId(), refund.getAmount());
+        return refundRepository.save(refund);
+    }
+
+    private void attemptRazorpayRefund(Refund refund, String razorpayPaymentId, BigDecimal refundAmount) {
+        try {
+
+            long amountInPaise = refundAmount
+                    .setScale(2)
+                    .movePointRight(2)
+                    .longValueExact();
+
+            JSONObject options = new JSONObject();
+
+            options.put("amount", amountInPaise);
+
+            com.razorpay.Refund razorpayRefund =
+                    razorpayClient.payments.refund(
+                            razorpayPaymentId,
+                            options
+                    );
+
+            // Razorpay refund ID
+            refund.setGatewayRefundId(
+                    razorpayRefund.get("id")
+            );
+
+            refund.setStatus(
+                    RefundStatus.PROCESSED
+            );
+
+            refund.setProcessedAt(
+                    LocalDateTime.now()
+            );
+            refund.setFailureReason(null);
+
+        } catch (Exception e) {
+
+            e.printStackTrace();
+
+            refund.setStatus(RefundStatus.FAILED);
+
+            refund.setFailureReason(
+                    e.getMessage() != null
+                            ? e.getMessage()
+                            : e.getClass().getName()
+            );
+        }
     }
 }

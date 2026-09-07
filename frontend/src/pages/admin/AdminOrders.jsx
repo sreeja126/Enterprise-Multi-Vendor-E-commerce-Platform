@@ -1,752 +1,371 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getAdminOrders, markOrderItemDelivered } from '../../services/adminService';
-import { getAllocationsForOrder } from '../../services/warehouseService';
+import {
+  getAllocationsForOrder,
+  getStockForProduct,
+  manuallyAllocateOrderItem,
+} from '../../services/warehouseService';
 
-const AdminOrders = () => {
+const STATUS_STYLES = {
+  CONFIRMED: "bg-blue-50 text-blue-700 border-blue-200",
+  PROCESSING: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  SHIPPED: "bg-purple-50 text-purple-700 border-purple-200",
+  DELIVERED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CANCELLED: "bg-rose-50 text-rose-700 border-rose-200",
+  RETURNED: "bg-orange-50 text-orange-700 border-orange-200",
+  REFUNDED: "bg-slate-100 text-slate-700 border-slate-200",
+};
+
+function AdminOrders() {
   const [orders, setOrders] = useState([]);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [loading, setLoading] = useState(true);
-
-  // Fulfillment (warehouse pick/pack/ship) data, keyed by order id.
-  // Fetched in bulk for confirmed orders after the order list loads, and
-  // lazily on-demand if a row is expanded before the bulk fetch reaches it.
   const [allocationsByOrder, setAllocationsByOrder] = useState({});
-  const [fulfillmentLoadingIds, setFulfillmentLoadingIds] = useState(new Set());
-  const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState("ALL");
   const [deliveringItemId, setDeliveringItemId] = useState(null);
 
-  const loadOrders = async () => {
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  const loadAll = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await getAdminOrders();
-      const list = Array.isArray(response) ? response : [];
+      // The real admin endpoint - every order across every customer and
+      // vendor, with full item detail. (Not /orders - that's the logged-in
+      // user's own order history. Not /orders/vendor/items - that's scoped
+      // to a vendor account and would reject an admin's token.)
+      const data = await getAdminOrders();
+      const list = Array.isArray(data) ? data : [];
       setOrders(list);
-      loadFulfillmentSummaries(list);
+
+      // Pull warehouse allocations for every order in parallel, so we know
+      // which items are actually allocated (and where) rather than guessing
+      // from fields that don't exist on the order payload.
+      const entries = await Promise.all(
+        list.map(async (order) => {
+          try {
+            const allocations = await getAllocationsForOrder(order.id);
+            return [order.id, Array.isArray(allocations) ? allocations : []];
+          } catch (err) {
+            return [order.id, []];
+          }
+        })
+      );
+      setAllocationsByOrder(Object.fromEntries(entries));
     } catch (err) {
-      console.error('Error fetching admin orders:', err);
+      console.error("Failed to load admin orders:", err);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const FULFILLMENT_EXCLUDED_STATUSES = ['PENDING', 'CANCELLED'];
-
-  const hasFulfillmentTrail = (order) =>
-    !FULFILLMENT_EXCLUDED_STATUSES.includes(
-      String(getStatus(order)).toUpperCase()
-    );
-
-  const loadFulfillmentSummaries = async (orderList) => {
-    const confirmedOrders = orderList.filter(hasFulfillmentTrail);
-
-    const results = await Promise.allSettled(
-      confirmedOrders.map((o) => getAllocationsForOrder(o.id))
-    );
-
-    setAllocationsByOrder((prev) => {
-      const next = { ...prev };
-
-      confirmedOrders.forEach((o, idx) => {
-        const result = results[idx];
-
-        next[o.id] =
-          result.status === 'fulfilled' && Array.isArray(result.value)
-            ? result.value
-            : [];
-      });
-
-      return next;
-    });
-  };
-
-  const loadAllocationsForOrder = async (orderId) => {
-    setFulfillmentLoadingIds((prev) => new Set(prev).add(orderId));
-
+  const refreshOrderAllocations = async (orderId) => {
     try {
-      const data = await getAllocationsForOrder(orderId);
-
+      const allocations = await getAllocationsForOrder(orderId);
       setAllocationsByOrder((prev) => ({
         ...prev,
-        [orderId]: Array.isArray(data) ? data : []
+        [orderId]: Array.isArray(allocations) ? allocations : [],
       }));
     } catch (err) {
-      console.error(
-        `Failed to load fulfillment for order ${orderId}:`,
-        err
-      );
-
-      setAllocationsByOrder((prev) => ({
-        ...prev,
-        [orderId]: []
-      }));
-    } finally {
-      setFulfillmentLoadingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(orderId);
-        return next;
-      });
+      console.error("Failed to refresh allocations:", err);
     }
   };
 
-  const toggleExpandOrder = (orderId) => {
-    const nowExpanding = expandedOrderId !== orderId;
-
-    setExpandedOrderId(nowExpanding ? orderId : null);
-
-    if (nowExpanding && !allocationsByOrder[orderId]) {
-      loadAllocationsForOrder(orderId);
-    }
-  };
-
-  const handleMarkDelivered = async (orderId, orderItemId) => {
-    setDeliveringItemId(orderItemId);
-
+  const handleMarkDelivered = async (itemId) => {
+    setDeliveringItemId(itemId);
     try {
-      await markOrderItemDelivered(orderItemId);
-      await loadAllocationsForOrder(orderId);
-      await loadOrders();
+      await markOrderItemDelivered(itemId);
+      await loadAll();
     } catch (err) {
-      alert(
-        err.response?.data ||
-        'Failed to mark this item as delivered.'
-      );
+      alert(err.response?.data || "Failed to mark this item as delivered.");
     } finally {
       setDeliveringItemId(null);
     }
   };
 
-  // Where an order sits, overall, in the pick -> pack -> ship pipeline.
-  // Driven by the LEAST-progressed active allocation, since that's the
-  // item holding the whole order back from shipping.
-  const STAGE_ORDER = [
-    'ALLOCATED',
-    'PICKED',
-    'PACKED',
-    'READY_FOR_SHIPMENT',
-    'DELIVERED'
-  ];
+  // Flatten orders -> one row per item, since allocation happens at the
+  // item level (a single order can be split across warehouses).
+  const rows = orders.flatMap((order) =>
+    (order.items || []).map((item) => {
+      const allocations = allocationsByOrder[order.id] || [];
+      const itemAllocations = allocations.filter(
+        (a) => a.orderItemId === item.id && a.status !== 'CANCELLED'
+      );
+      const allocatedQuantity = itemAllocations.reduce((sum, a) => sum + a.quantity, 0);
+      const remaining = Math.max(0, (item.quantity || 0) - allocatedQuantity);
+      const warehouseNames = [...new Set(itemAllocations.map((a) => a.warehouseName))];
 
-  const STAGE_LABELS = {
-    ALLOCATED: 'To Pick',
-    PICKED: 'To Pack',
-    PACKED: 'To Ship',
-    READY_FOR_SHIPMENT: 'Ready to Ship',
-    DELIVERED: 'Delivered'
-  };
-
-  const STAGE_STYLES = {
-    ALLOCATED: 'bg-amber-50 text-amber-700 border-amber-200',
-    PICKED: 'bg-blue-50 text-blue-700 border-blue-200',
-    PACKED: 'bg-violet-50 text-violet-700 border-violet-200',
-    READY_FOR_SHIPMENT:
-      'bg-emerald-50 text-emerald-700 border-emerald-200',
-    DELIVERED:
-      'bg-emerald-50 text-emerald-700 border-emerald-200'
-  };
-
-  const getFulfillmentSummary = (orderId) => {
-    const allocations = allocationsByOrder[orderId];
-
-    if (allocations === undefined) {
       return {
-        loading: fulfillmentLoadingIds.has(orderId),
-        label: null
+        ...item,
+        orderId: order.id,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        createdAt: order.createdAt,
+        remaining,
+        warehouseNames,
       };
+    })
+  );
+
+  const filteredRows = rows.filter((row) => {
+    if (filterStatus === "ALL") return true;
+    if (filterStatus === "NEEDS_ALLOCATION") {
+      return row.remaining > 0 && row.status !== "CANCELLED";
     }
-
-    const active = allocations.filter(
-      (a) => a.status !== 'CANCELLED'
-    );
-
-    if (active.length === 0) {
-      return allocations.length > 0
-        ? {
-            label: 'Cancelled',
-            style: 'bg-rose-50 text-rose-700 border-rose-200',
-            total: allocations.length
-          }
-        : {
-            label: 'Awaiting Allocation',
-            style: 'bg-stone-100 text-slate-600 border-stone-200',
-            total: 0
-          };
-    }
-
-    // Final state — all active items are delivered.
-    if (active.every((a) => a.status === 'DELIVERED')) {
-      return {
-        label: 'Delivered',
-        style: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        total: active.length
-      };
-    }
-
-    const stageIndexes = active
-      .map((a) => STAGE_ORDER.indexOf(a.status))
-      .filter((index) => index >= 0);
-
-    const minStageIndex =
-      stageIndexes.length > 0
-        ? Math.min(...stageIndexes)
-        : 0;
-
-    const stage =
-      STAGE_ORDER[minStageIndex] || 'ALLOCATED';
-
-    return {
-      label: STAGE_LABELS[stage],
-      style: STAGE_STYLES[stage],
-      total: active.length
-    };
-  };
-
-  useEffect(() => {
-    loadOrders();
-  }, []);
-
-  const getStatus = (order) =>
-    order?.status ||
-    order?.orderStatus ||
-    order?.order_status ||
-    'UNKNOWN';
-
-  const getDate = (order) =>
-    order?.createdAt ||
-    order?.orderDate ||
-    order?.date;
-
-  const statuses = useMemo(() => {
-    return [
-      ...new Set(
-        orders.map((order) =>
-          String(getStatus(order)).toUpperCase()
-        )
-      )
-    ];
-  }, [orders]);
-
-  const filteredOrders = useMemo(() => {
-    const searchValue = search.toLowerCase().trim();
-
-    return orders.filter((order) => {
-      const status = String(getStatus(order)).toUpperCase();
-
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        status === statusFilter;
-
-      const matchesSearch =
-        !searchValue ||
-        String(order?.id || '')
-          .toLowerCase()
-          .includes(searchValue) ||
-        String(
-          order?.customerName ||
-          order?.user?.fullName ||
-          ''
-        )
-          .toLowerCase()
-          .includes(searchValue) ||
-        String(order?.customerEmail || '')
-          .toLowerCase()
-          .includes(searchValue);
-
-      return matchesStatus && matchesSearch;
-    });
-  }, [orders, search, statusFilter]);
-
-  const formatCurrency = (value) =>
-    `₹${Number(value || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
-
-  const formatDate = (value) => {
-    if (!value) return 'N/A';
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) return 'N/A';
-
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return '—';
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) return '—';
-
-    return date.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+    return row.status === filterStatus;
+  });
 
   if (loading) {
-    return <OrdersSkeleton />;
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-stone-50/50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-
-        {/* HEADER */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-serif">
-              Order Monitoring
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Monitor marketplace orders and track fulfillment statuses.
-            </p>
-          </div>
-
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-stone-100/80 border border-stone-200 rounded-full text-xs font-semibold text-slate-700 self-start sm:self-auto">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-
-            {filteredOrders.length}{' '}
-            {filteredOrders.length === 1
-              ? 'Order'
-              : 'Orders'} Found
-          </div>
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-stone-200 shadow-xs">
+        <div>
+          <h1 className="text-2xl font-serif font-bold text-slate-900">Order Management</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            {orders.length} order(s) · {rows.length} line item(s)
+          </p>
         </div>
 
-        {/* MAIN CARD CONTAINER */}
-        <div className="bg-white border border-stone-200 rounded-2xl shadow-xs overflow-hidden">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-slate-600">Filter:</label>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="text-xs font-semibold bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="NEEDS_ALLOCATION">Needs Allocation</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="PROCESSING">Processing (Allocated)</option>
+            <option value="SHIPPED">Shipped</option>
+            <option value="DELIVERED">Delivered</option>
+            <option value="CANCELLED">Cancelled</option>
+            <option value="RETURNED">Returned</option>
+            <option value="REFUNDED">Refunded</option>
+          </select>
+        </div>
+      </div>
 
-          {/* SEARCH & FILTERS BAR */}
-          <div className="p-4 sm:p-5 border-b border-stone-100 bg-white">
-            <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-stone-50 border-b border-stone-200 text-slate-700 uppercase font-semibold">
+              <tr>
+                <th className="p-4">Order / Product</th>
+                <th className="p-4">Customer</th>
+                <th className="p-4">Details</th>
+                <th className="p-4">Allocation</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-8 text-center text-slate-400 font-medium">
+                    No order items match this filter.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((row) => (
+                  <OrderItemRow
+                    key={row.id}
+                    row={row}
+                    onAllocated={() => refreshOrderAllocations(row.orderId)}
+                    onMarkDelivered={() => handleMarkDelivered(row.id)}
+                    delivering={deliveringItemId === row.id}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-              {/* Search Field */}
-              <div className="relative flex-1 w-full">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                </div>
+const OrderItemRow = ({ row, onAllocated, onMarkDelivered, delivering }) => {
+  const [showAllocateForm, setShowAllocateForm] = useState(false);
+  const [stockOptions, setStockOptions] = useState(null);
+  const [loadingStock, setLoadingStock] = useState(false);
+  const [warehouseId, setWarehouseId] = useState('');
+  const [quantity, setQuantity] = useState(row.remaining);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
-                <input
-                  type="text"
-                  placeholder="Search by Order ID, customer name, or email..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50/50 border border-stone-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition"
-                />
+  const isTerminal = ['CANCELLED', 'RETURNED', 'REFUNDED'].includes(row.status);
+  const needsAllocation = row.remaining > 0 && !isTerminal;
 
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
+  const openAllocateForm = async () => {
+    setShowAllocateForm(true);
+    setQuantity(row.remaining);
+    setError('');
+    if (stockOptions !== null) return;
+    setLoadingStock(true);
+    try {
+      const data = await getStockForProduct(row.productId);
+      setStockOptions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setStockOptions([]);
+    } finally {
+      setLoadingStock(false);
+    }
+  };
 
-              {/* Dropdown Filter */}
-              <div className="w-full sm:w-56">
-                <select
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(e.target.value)
-                  }
-                  className="w-full px-3.5 py-2.5 bg-stone-50/50 border border-stone-200 rounded-xl text-sm text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition cursor-pointer"
-                >
-                  <option value="ALL">All Statuses</option>
+  const handleAllocate = async () => {
+    if (!warehouseId) {
+      setError('Choose a warehouse first.');
+      return;
+    }
+    const qty = Number(quantity);
+    if (!qty || qty <= 0) {
+      setError('Enter a quantity greater than zero.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await manuallyAllocateOrderItem(row.id, Number(warehouseId), qty);
+      setShowAllocateForm(false);
+      setStockOptions(null);
+      setWarehouseId('');
+      await onAllocated();
+    } catch (err) {
+      setError(err.response?.data || 'Failed to allocate this item.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
-              </div>
+  return (
+    <tr className="hover:bg-stone-50/50 transition align-top">
+      <td className="p-4 font-bold text-slate-900">
+        <div>{row.productName}</div>
+        <div className="text-2xs font-medium text-slate-400 mt-0.5">Order #{row.orderId}</div>
+      </td>
+      <td className="p-4 font-medium text-slate-700">
+        <div>{row.customerName}</div>
+        <div className="text-2xs text-slate-400">{row.customerEmail}</div>
+      </td>
+      <td className="p-4 font-medium text-slate-700">
+        {row.quantity} unit(s) x ₹{row.priceAtPurchase}
+      </td>
 
+      <td className="p-4">
+        {isTerminal ? (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-stone-100 text-slate-500 border border-stone-200">
+            N/A
+          </span>
+        ) : row.remaining <= 0 ? (
+          <div>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              &#10003; Allocated
+            </span>
+            {row.warehouseNames.length > 0 && (
+              <div className="text-2xs text-slate-400 mt-1">{row.warehouseNames.join(', ')}</div>
+            )}
+          </div>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+            &#9679; Needs Allocation{row.warehouseNames.length > 0 ? ` (${row.remaining} left)` : ''}
+          </span>
+        )}
+      </td>
+
+      <td className="p-4">
+        <span
+          className={`px-2.5 py-1 rounded-full font-bold text-[10px] border ${
+            STATUS_STYLES[row.status] || "bg-stone-100 text-stone-700"
+          }`}
+        >
+          {row.status}
+        </span>
+      </td>
+
+      <td className="p-4 text-right">
+        {needsAllocation && !showAllocateForm && (
+          <button
+            type="button"
+            onClick={openAllocateForm}
+            className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer"
+          >
+            Allocate
+          </button>
+        )}
+
+        {row.status === 'SHIPPED' && (
+          <button
+            type="button"
+            onClick={onMarkDelivered}
+            disabled={delivering}
+            className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-50 cursor-pointer"
+          >
+            {delivering ? 'Updating...' : 'Mark Delivered'}
+          </button>
+        )}
+
+        {!needsAllocation && row.status !== 'SHIPPED' && (
+          <span className="text-2xs text-stone-400 italic">
+            {isTerminal ? 'No action' : 'Handled by warehouse staff'}
+          </span>
+        )}
+
+        {showAllocateForm && (
+          <div className="mt-2 text-left bg-stone-50 border border-stone-200 rounded-xl p-3 w-64 ml-auto space-y-2">
+            <select
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+              className="w-full border border-stone-300 rounded-lg px-2 py-1.5 text-2xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            >
+              <option value="">
+                {loadingStock ? 'Loading warehouses...' : 'Choose warehouse...'}
+              </option>
+              {(stockOptions || []).map((s) => (
+                <option key={s.warehouseId} value={s.warehouseId} disabled={s.availableQuantity <= 0}>
+                  {s.warehouseName} ({s.availableQuantity} available)
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={1}
+              max={row.remaining}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="w-full border border-stone-300 rounded-lg px-2 py-1.5 text-2xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            />
+            {error && <p className="text-rose-600 text-2xs">{error}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleAllocate}
+                disabled={submitting}
+                className="flex-1 px-3 py-1.5 rounded-lg text-2xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? 'Allocating...' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAllocateForm(false)}
+                className="px-3 py-1.5 rounded-lg text-2xs font-semibold border border-stone-300 text-slate-600 hover:bg-stone-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
             </div>
           </div>
-
-          {/* TABLE SECTION */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
-
-              <thead>
-                <tr className="bg-stone-50/70 border-b border-stone-200 text-xs uppercase tracking-wider font-semibold text-slate-500">
-                  <th className="py-3.5 px-5">Order ID</th>
-                  <th className="py-3.5 px-5">Customer</th>
-                  <th className="py-3.5 px-5">Date</th>
-                  <th className="py-3.5 px-5">Total</th>
-                  <th className="py-3.5 px-5">Status</th>
-                  <th className="py-3.5 px-5">Fulfillment</th>
-                  <th className="py-3.5 px-5"></th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-stone-100 text-sm">
-
-                {filteredOrders.length > 0 ? (
-                  filteredOrders.map((order) => {
-
-                    const isConfirmed =
-                      hasFulfillmentTrail(order);
-
-                    const summary =
-                      isConfirmed
-                        ? getFulfillmentSummary(order.id)
-                        : null;
-                    const isExpanded =
-                      expandedOrderId === order.id;
-                    return (
-                      <React.Fragment key={order.id}>
-                        <tr className="hover:bg-stone-50/50 transition-colors duration-150">
-                          <td className="py-4 px-5 font-mono text-xs font-semibold text-slate-900">
-                            #{order.id}
-                          </td>
-                          <td className="py-4 px-5">
-                            <div className="font-semibold text-slate-900">
-                              {order.customerName ||
-                                order.user?.fullName ||
-                                'Customer'}
-                            </div>
-                            {order.customerEmail && (
-                              <div className="text-xs text-slate-400 mt-0.5">
-                                {order.customerEmail}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-5 text-slate-600 font-medium whitespace-nowrap">
-                            {formatDate(getDate(order))}
-                          </td>
-                          <td className="py-4 px-5 font-bold text-slate-900 whitespace-nowrap">
-                            {formatCurrency(order.totalAmount)}
-                          </td>
-                          <td className="py-4 px-5 whitespace-nowrap">
-                            <StatusBadge
-                              status={getStatus(order)}
-                            />
-                          </td>
-                          <td className="py-4 px-5 whitespace-nowrap">
-                            {!isConfirmed ? (
-                              <span className="text-xs text-slate-400">
-                                —
-                              </span>
-                            ) : summary?.loading ||
-                              summary?.label === null ? (
-                              <span className="text-xs text-slate-400">
-                                Loading...
-                              </span>
-                            ) : (
-                              <span
-                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${summary.style}`}
-                              >
-                                {summary.label}
-                                {summary.total
-                                  ? ` • ${summary.total} item${
-                                      summary.total === 1
-                                        ? ''
-                                        : 's'
-                                    }`
-                                  : ''}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-4 px-5 whitespace-nowrap">
-                            {isConfirmed && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toggleExpandOrder(order.id)
-                                }
-                                className="text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
-                              >
-                                {isExpanded
-                                  ? 'Hide'
-                                  : 'Details'}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr>
-                            <td
-                              colSpan="7"
-                              className="bg-stone-50/70 px-5 py-4"
-                            >
-                              {fulfillmentLoadingIds.has(
-                                order.id
-                              ) ? (
-                                <p className="text-xs text-slate-500">
-                                  Loading fulfillment details...
-                                </p>
-                              ) : (
-                                (allocationsByOrder[
-                                  order.id
-                                ] || []).length === 0 ? (
-                                  <p className="text-xs text-slate-500">
-                                    No warehouse allocation yet
-                                    for this order — it needs
-                                    stock received into a
-                                    warehouse before it can be
-                                    picked.
-                                  </p>
-                                ) : (
-                                  <table className="w-full text-left text-xs">
-                                    <thead>
-                                      <tr className="text-2xs uppercase tracking-wider font-semibold text-slate-500 border-b border-stone-200">
-                                        <th className="py-2 pr-4">
-                                          Product
-                                        </th>
-                                        <th className="py-2 pr-4">
-                                          Qty
-                                        </th>
-                                        <th className="py-2 pr-4">
-                                          Warehouse
-                                        </th>
-                                        <th className="py-2 pr-4">
-                                          Status
-                                        </th>
-                                        <th className="py-2 pr-4">
-                                          Last Updated
-                                        </th>
-                                        <th className="py-2 pr-4"></th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-stone-200">
-                                      {allocationsByOrder[
-                                        order.id
-                                      ].map((allocation) => (
-                                        <tr
-                                          key={
-                                            allocation.id
-                                          }
-                                        >
-                                          <td className="py-2 pr-4 font-medium text-slate-800">
-                                            {
-                                              allocation.productName
-                                            }
-                                          </td>
-                                          <td className="py-2 pr-4 text-slate-600">
-                                            {
-                                              allocation.quantity
-                                            }
-                                          </td>
-                                          <td className="py-2 pr-4 text-slate-600">
-                                            {
-                                              allocation.warehouseName
-                                            }
-                                          </td>
-                                          <td className="py-2 pr-4">
-                                            <span
-                                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-semibold border ${
-                                                STAGE_STYLES[
-                                                  allocation.status
-                                                ] ||
-                                                'bg-rose-50 text-rose-700 border-rose-200'
-                                              }`}
-                                            >
-                                              {allocation.status ===
-                                              'CANCELLED'
-                                                ? 'Cancelled'
-                                                : STAGE_LABELS[
-                                                    allocation.status
-                                                  ] ||
-                                                  allocation.status}
-                                            </span>
-
-                                          </td>
-
-                                          <td className="py-2 pr-4 text-slate-500">
-                                            {formatDateTime(
-                                              allocation.deliveredAt ||
-                                                allocation.readyAt ||
-                                                allocation.packedAt ||
-                                                allocation.pickedAt ||
-                                                allocation.allocatedAt
-                                            )}
-                                          </td>
-
-                                          <td className="py-2 pr-4">
-
-                                            {allocation.status ===
-                                              'READY_FOR_SHIPMENT' && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleMarkDelivered(
-                                                    order.id,
-                                                    allocation.orderItemId
-                                                  )
-                                                }
-                                                disabled={
-                                                  deliveringItemId ===
-                                                  allocation.orderItemId
-                                                }
-                                                className="px-2.5 py-1 rounded-md text-2xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition disabled:opacity-50 cursor-pointer whitespace-nowrap"
-                                              >
-                                                {deliveringItemId ===
-                                                allocation.orderItemId
-                                                  ? 'Updating...'
-                                                  : 'Mark Delivered'}
-                                              </button>
-                                            )}
-
-                                          </td>
-
-                                        </tr>
-                                      ))}
-
-                                    </tbody>
-
-                                  </table>
-                                )
-                              )}
-
-                            </td>
-                          </tr>
-                        )}
-
-                      </React.Fragment>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td
-                      colSpan="7"
-                      className="py-12 px-5 text-center"
-                    >
-                      <div className="max-w-xs mx-auto space-y-2">
-                        <div className="w-10 h-10 bg-stone-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth="2"
-                              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                            />
-                          </svg>
-                        </div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          No orders matched your criteria
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Try searching with different terms or adjusting your status filters.
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+        )}
+      </td>
+    </tr>
   );
 };
-const StatusBadge = ({ status }) => {
-  const value = String(
-    status || 'UNKNOWN'
-  ).toUpperCase();
-  let badgeStyles =
-    'bg-slate-100 text-slate-700 border-slate-200';
-  if (
-    ['COMPLETED', 'DELIVERED', 'PAID'].includes(value)
-  ) {
-    badgeStyles =
-      'bg-emerald-50 text-emerald-700 border-emerald-200';
-  } else if (
-    ['PENDING', 'PROCESSING', 'SHIPPED'].includes(value)
-  ) {
-    badgeStyles =
-      'bg-amber-50 text-amber-700 border-amber-200';
-  } else if (
-    ['CANCELLED', 'CANCELED', 'FAILED'].includes(value)
-  ) {
-    badgeStyles =
-      'bg-rose-50 text-rose-700 border-rose-200';
-  }
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${badgeStyles}`}
-    >
-      {value.replace(/_/g, ' ')}
-    </span>
-  );
-};
-const OrdersSkeleton = () => (
-  <div className="min-h-[calc(100vh-64px)] bg-stone-50/50 py-8 px-4 sm:px-6 lg:px-8">
-    <div className="max-w-7xl mx-auto space-y-6 animate-pulse">
-
-      {/* Header Skeleton */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="space-y-2">
-          <div className="h-7 w-48 bg-stone-200 rounded-md"></div>
-          <div className="h-4 w-72 bg-stone-200 rounded-md"></div>
-        </div>
-
-        <div className="h-7 w-24 bg-stone-200 rounded-full"></div>
-      </div>
-
-      {/* Card Skeleton */}
-      <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden space-y-4 p-5">
-
-        {/* Filter Bar Skeleton */}
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="h-10 bg-stone-100 rounded-xl flex-1 w-full"></div>
-          <div className="h-10 bg-stone-100 rounded-xl w-full sm:w-56"></div>
-        </div>
-
-        {/* Rows Skeleton */}
-        <div className="space-y-3 pt-2">
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-12 bg-stone-50 rounded-xl w-full"
-            ></div>
-          ))}
-        </div>
-
-      </div>
-
-    </div>
-  </div>
-);
 
 export default AdminOrders;

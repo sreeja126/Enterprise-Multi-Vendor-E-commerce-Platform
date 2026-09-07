@@ -48,6 +48,11 @@ public class Coupon {
     // Null = unlimited.
     private Integer usageLimit;
 
+    // How many times a SINGLE customer may use this coupon (e.g. "one per
+    // customer" welcome codes). Null = no per-customer cap, only the
+    // global usageLimit above applies.
+    private Integer perCustomerLimit;
+
     // How many times it HAS been used so far. Incremented atomically
     // whenever a customer's order successfully applies the coupon.
     @Column(nullable = false)
@@ -139,6 +144,14 @@ public class Coupon {
 
     public void setUsageLimit(Integer usageLimit) {
         this.usageLimit = usageLimit;
+    }
+
+    public Integer getPerCustomerLimit() {
+        return perCustomerLimit;
+    }
+
+    public void setPerCustomerLimit(Integer perCustomerLimit) {
+        this.perCustomerLimit = perCustomerLimit;
     }
 
     public int getUsageCount() {

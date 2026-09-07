@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getAdminVendors } from '../../services/adminService';
+import { getAdminVendors, approveVendor, rejectVendor } from '../../services/adminService';
 
 const AdminVendors = () => {
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState(null);
 
   const loadVendors = async () => {
     try {
@@ -26,6 +27,31 @@ const AdminVendors = () => {
   useEffect(() => {
     loadVendors();
   }, []);
+
+  const handleApprove = async (vendorId) => {
+    setBusyId(vendorId);
+    try {
+      await approveVendor(vendorId);
+      await loadVendors();
+    } catch (err) {
+      alert(err.response?.data || 'Failed to approve this vendor.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleReject = async (vendorId) => {
+    if (!window.confirm('Reject this vendor? They will not be able to list products.')) return;
+    setBusyId(vendorId);
+    try {
+      await rejectVendor(vendorId);
+      await loadVendors();
+    } catch (err) {
+      alert(err.response?.data || 'Failed to reject this vendor.');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const filteredVendors = useMemo(() => {
     const value = search.toLowerCase().trim();
@@ -132,7 +158,8 @@ const AdminVendors = () => {
                   <th className="py-3.5 px-5">Contact Email</th>
                   <th className="py-3.5 px-5">Phone</th>
                   <th className="py-3.5 px-5 text-center">Products</th>
-                  <th className="py-3.5 px-5 text-right">Status</th>
+                  <th className="py-3.5 px-5">Status</th>
+                  <th className="py-3.5 px-5 text-right">Action</th>
                 </tr>
               </thead>
 
@@ -184,14 +211,39 @@ const AdminVendors = () => {
                         </span>
                       </td>
 
-                      <td className="py-4 px-5 text-right">
+                      <td className="py-4 px-5">
                         <StatusBadge status={vendor.status || 'ACTIVE'} />
+                      </td>
+
+                      <td className="py-4 px-5 text-right">
+                        {String(vendor.status).toUpperCase() === 'PENDING' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(vendor.id)}
+                              disabled={busyId === vendor.id}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-50 cursor-pointer"
+                            >
+                              {busyId === vendor.id ? '...' : 'Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleReject(vendor.id)}
+                              disabled={busyId === vendor.id}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 text-rose-600 hover:bg-rose-50 transition disabled:opacity-50 cursor-pointer"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-stone-400 italic">No action</span>
+                        )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="py-12 px-4 text-center">
+                    <td colSpan="7" className="py-12 px-4 text-center">
                       <div className="max-w-xs mx-auto space-y-2">
                         <div className="w-10 h-10 bg-stone-100 text-slate-400 rounded-full flex items-center justify-center mx-auto">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,14 +304,17 @@ const Avatar = ({ name }) => {
 const StatusBadge = ({ status }) => {
   const value = String(status || 'UNKNOWN').toUpperCase();
 
-  const isHealthy = ['ACTIVE', 'CONNECTED', 'UP'].includes(value);
-  const isInactive = ['INACTIVE', 'DISCONNECTED', 'DOWN'].includes(value);
+  const isHealthy = ['ACTIVE', 'CONNECTED', 'UP', 'APPROVED'].includes(value);
+  const isInactive = ['INACTIVE', 'DISCONNECTED', 'DOWN', 'REJECTED'].includes(value);
+  const isPending = value === 'PENDING';
 
   let badgeStyle = 'bg-stone-100 text-slate-700 border-stone-200';
   if (isHealthy) {
     badgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200/80';
   } else if (isInactive) {
     badgeStyle = 'bg-rose-50 text-rose-700 border-rose-200/80';
+  } else if (isPending) {
+    badgeStyle = 'bg-amber-50 text-amber-700 border-amber-200/80';
   }
 
   return (
@@ -272,6 +327,8 @@ const StatusBadge = ({ status }) => {
             ? 'bg-emerald-500'
             : isInactive
             ? 'bg-rose-500'
+            : isPending
+            ? 'bg-amber-500'
             : 'bg-slate-400'
         }`}
       />

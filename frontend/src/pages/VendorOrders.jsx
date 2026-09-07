@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getVendorOrderItems, updateOrderItemStatus } from "../services/OrderService";
+import { getVendorOrderItems } from "../services/OrderService";
 
 const STATUS_STYLES = {
   PENDING: "bg-stone-100 text-stone-600",
@@ -12,20 +12,9 @@ const STATUS_STYLES = {
   REFUNDED: "bg-slate-100 text-slate-700",
 };
 
-// Only the forward moves a vendor can make from each status. CANCELLED is
-// always offered separately (as long as the item isn't already terminal).
-const NEXT_STATUS = {
-  CONFIRMED: "PROCESSING",
-  PROCESSING: "SHIPPED",
-  SHIPPED: "DELIVERED",
-};
-
-const TERMINAL = new Set(["DELIVERED", "CANCELLED", "RETURNED", "REFUNDED"]);
-
 function VendorOrders() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     fetchItems();
@@ -39,18 +28,6 @@ function VendorOrders() {
       console.error("Failed to load orders", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleUpdateStatus = async (itemId, newStatus) => {
-    setBusyId(itemId);
-    try {
-      const updated = await updateOrderItemStatus(itemId, newStatus);
-      setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
-    } catch (err) {
-      alert(err.response?.data || "Failed to update status.");
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -71,7 +48,7 @@ function VendorOrders() {
             Orders
           </h1>
           <p className="text-slate-500 mt-1">
-            {items.length} item{items.length !== 1 ? "s" : ""} sold, across all your orders
+            {items.length} item{items.length !== 1 ? "s" : ""} sold across all your orders
           </p>
         </div>
 
@@ -87,8 +64,7 @@ function VendorOrders() {
         ) : (
           <div className="space-y-4">
             {items.map((item) => {
-              const nextStatus = NEXT_STATUS[item.status];
-              const isTerminal = TERMINAL.has(item.status);
+              const isAllocated = item.warehouseId || (item.allocatedQuantity && item.allocatedQuantity > 0);
 
               return (
                 <div
@@ -127,30 +103,8 @@ function VendorOrders() {
 
                   </div>
 
-                  {!isTerminal && (
-                    <div className="flex gap-2 mt-4 pt-4 border-t border-stone-100">
-                      {nextStatus && (
-                        <button
-                          onClick={() => handleUpdateStatus(item.id, nextStatus)}
-                          disabled={busyId === item.id}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-60"
-                        >
-                          {busyId === item.id ? "Updating…" : `Mark as ${nextStatus}`}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          if (window.confirm("Cancel this item? This can't be undone.")) {
-                            handleUpdateStatus(item.id, "CANCELLED");
-                          }
-                        }}
-                        disabled={busyId === item.id}
-                        className="px-4 py-2 rounded-lg text-sm font-medium border border-rose-200 text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
+                  
+
                 </div>
               );
             })}

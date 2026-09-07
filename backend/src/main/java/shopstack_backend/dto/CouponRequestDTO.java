@@ -13,6 +13,7 @@ public class CouponRequestDTO {
     private LocalDate startDate;
     private LocalDate expiryDate;
     private Integer usageLimit;          // nullable = unlimited
+    private Integer perCustomerLimit;    // nullable = no per-customer cap
     private Boolean active;
 
     public CouponRequestDTO() {
@@ -80,6 +81,14 @@ public class CouponRequestDTO {
 
     public void setUsageLimit(Integer usageLimit) {
         this.usageLimit = usageLimit;
+    }
+
+    public Integer getPerCustomerLimit() {
+        return perCustomerLimit;
+    }
+
+    public void setPerCustomerLimit(Integer perCustomerLimit) {
+        this.perCustomerLimit = perCustomerLimit;
     }
 
     public Boolean getActive() {

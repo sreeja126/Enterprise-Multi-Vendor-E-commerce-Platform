@@ -15,6 +15,7 @@ import shopstack_backend.repository.StockHistoryRepository;
 import shopstack_backend.repository.VendorRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,29 @@ public class ProductService {
 
     @Autowired(required = false)
     private StockHistoryRepository stockHistoryRepository;
+
+    @Autowired(required = false)
+    private shopstack_backend.repository.OrderItemRepository orderItemRepository;
+
+    @Autowired(required = false)
+    private shopstack_backend.repository.CartItemRepository cartItemRepository;
+
+    @Autowired(required = false)
+    private shopstack_backend.repository.WishlistRepository wishlistRepository;
+
+    @Autowired(required = false)
+    private shopstack_backend.repository.StockMovementRepository stockMovementRepository;
+
+    @Autowired(required = false)
+    private shopstack_backend.repository.WarehouseStockRepository warehouseStockRepository;
+
+    // WarehouseService already depends on ProductService (for stock-change
+    // logging), so this reverse reference must be @Lazy to avoid a circular
+    // bean-creation error at startup — it's only ever called well after
+    // both beans exist.
+    @Autowired(required = false)
+    @Lazy
+    private shopstack_backend.service.WarehouseService warehouseService;
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> getAllProducts() {
 
@@ -133,6 +157,13 @@ public class ProductService {
                         "No vendor profile found for this account. "
                                 + "Register as a vendor first."));
 
+        if (!"APPROVED".equalsIgnoreCase(vendor.getStatus())) {
+            throw new IllegalStateException(
+                    "PENDING".equalsIgnoreCase(vendor.getStatus())
+                            ? "Your vendor account is awaiting admin approval before you can list products."
+                            : "Your vendor account isn't approved to list products. Contact support.");
+        }
+
         Product product = new Product();
 
         mapDTOToProduct(dto, product);
@@ -174,6 +205,36 @@ public class ProductService {
                                 "Product not found with id: " + id));
 
         assertOwnership(product, vendorEmail);
+
+        // Real order/financial history must never be silently destroyed —
+        // if this product has ever actually been ordered, block the hard
+        // delete instead of either crashing on the FK constraint or quietly
+        // orphaning historical order data.
+        if (orderItemRepository != null && orderItemRepository.existsByProduct_Id(id)) {
+            throw new IllegalStateException(
+                    "This product has existing orders and can't be deleted. " +
+                    "Set its stock to 0 or remove it from sale instead.");
+        }
+
+        // Everything else referencing this product is either another
+        // user's cart/wishlist entry, or this product's own internal
+        // warehouse/audit records — all safe (and necessary) to clear
+        // before the product row itself can be deleted.
+        if (cartItemRepository != null) {
+            cartItemRepository.deleteByProduct_Id(id);
+        }
+        if (wishlistRepository != null) {
+            wishlistRepository.deleteByProduct_Id(id);
+        }
+        if (stockMovementRepository != null) {
+            stockMovementRepository.deleteByProduct_Id(id);
+        }
+        if (stockHistoryRepository != null) {
+            stockHistoryRepository.deleteByProductId(id);
+        }
+        if (warehouseStockRepository != null) {
+            warehouseStockRepository.deleteByProduct_Id(id);
+        }
 
         productRepository.delete(product);
     }
@@ -473,9 +534,9 @@ public class ProductService {
                 product.getFinalPrice()
         );
         int stock =
-                product.getStockQuantity() != null
-                        ? product.getStockQuantity()
-                        : 0;
+                warehouseService != null
+                        ? warehouseService.getTotalAvailableStock(product.getId())
+                        : (product.getStockQuantity() != null ? product.getStockQuantity() : 0);
 
         dto.setStock(stock);
         if (product.getImageUrl() != null

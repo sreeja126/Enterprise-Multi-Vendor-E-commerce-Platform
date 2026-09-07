@@ -53,7 +53,7 @@ public class CouponController {
         try {
             ApplyCouponRequest safeRequest = request != null ? request : new ApplyCouponRequest();
             BigDecimal subtotal = resolveSubtotal(authentication.getName(), safeRequest);
-            return ResponseEntity.ok(couponService.getAvailableCoupons(subtotal));
+            return ResponseEntity.ok(couponService.getAvailableCoupons(subtotal, authentication.getName()));
         } catch (IllegalArgumentException | IllegalStateException e) {
             // Empty cart, missing product, etc. — nothing to show yet rather than an error.
             return ResponseEntity.ok(Collections.emptyList());
@@ -65,7 +65,7 @@ public class CouponController {
                                           @RequestBody ApplyCouponRequest request) {
         try {
             BigDecimal subtotal = resolveSubtotal(authentication.getName(), request);
-            ApplyCouponResponseDTO response = couponService.preview(request.getCode(), subtotal);
+            ApplyCouponResponseDTO response = couponService.preview(request.getCode(), subtotal, authentication.getName());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
