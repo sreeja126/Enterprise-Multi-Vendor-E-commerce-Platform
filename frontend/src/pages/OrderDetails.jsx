@@ -27,8 +27,6 @@ const REFUND_STATUS_STYLES = {
 };
 
 const ORDER_STEPS = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"];
-
-// Allow cancellations up to CONFIRMED or until warehouse allocation starts
 const CANCELLABLE_STATUSES = new Set(["PENDING", "CONFIRMED"]);
 
 function OrderDetails() {
@@ -41,6 +39,12 @@ function OrderDetails() {
   const [returnsByItemId, setReturnsByItemId] = useState({});
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState(null);
+
+  // Return Modal State
+  const [returnModalItem, setReturnModalItem] = useState(null);
+  const [returnQuantity, setReturnQuantity] = useState(1);
+  const [returnReason, setReturnReason] = useState("");
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
 
   useEffect(() => {
     fetchOrder();
@@ -87,24 +91,38 @@ function OrderDetails() {
     }
   };
 
-  const handleRequestReturn = async (itemId) => {
-    const reason = window.prompt("Why are you returning this item?");
-    if (reason === null) return;
-    if (!reason.trim()) {
+  // Open modal
+  const handleOpenReturnModal = (item) => {
+    setReturnModalItem(item);
+    setReturnQuantity(1);
+    setReturnReason("");
+  };
+
+  // Submit return request with Quantity & Reason
+  const handleConfirmReturn = async (e) => {
+    e.preventDefault();
+    if (!returnReason.trim()) {
       alert("Please provide a reason for the return.");
       return;
     }
 
-    setCancellingId(itemId);
+    if (returnQuantity < 1 || returnQuantity > returnModalItem.quantity) {
+      alert(`Quantity must be between 1 and ${returnModalItem.quantity}`);
+      return;
+    }
+
+    setIsSubmittingReturn(true);
     try {
-      await requestReturn(itemId, reason.trim());
+      // Passes item ID, reason, and quantity to your service
+      await requestReturn(returnModalItem.id, returnReason.trim(), returnQuantity);
       await fetchOrder();
       await fetchReturns();
+      setReturnModalItem(null);
       alert("Return request submitted. The seller will review it shortly.");
     } catch (err) {
       alert(err.response?.data || "Failed to submit return request.");
     } finally {
-      setCancellingId(null);
+      setIsSubmittingReturn(false);
     }
   };
 
@@ -151,10 +169,6 @@ function OrderDetails() {
     order.paymentMethod === "cod" ||
     order.payment?.method === "COD";
 
-  /**
-   * ALLOCATION-AWARE DISPLAY STATUS
-   * Forces the UI to show 'CONFIRMED' if the order hasn't been manually assigned a warehouse yet.
-   */
   const isAllocated =
     order.allocationStatus === "ALLOCATED" ||
     order.warehouseId ||
@@ -330,11 +344,10 @@ function OrderDetails() {
                           )}
                           {item.status === "DELIVERED" && !existingReturn && (
                             <button
-                              onClick={() => handleRequestReturn(item.id)}
-                              disabled={cancellingId === item.id}
-                              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 border border-stone-200 hover:bg-stone-50 px-2.5 py-1 rounded-lg transition cursor-pointer disabled:opacity-50"
+                              onClick={() => handleOpenReturnModal(item)}
+                              className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 border border-orange-200 bg-orange-50/50 hover:bg-orange-50 px-2.5 py-1 rounded-lg transition cursor-pointer"
                             >
-                              {cancellingId === item.id ? "Submitting…" : "Request Return"}
+                              Request Return
                             </button>
                           )}
                         </div>
@@ -514,6 +527,70 @@ function OrderDetails() {
         </div>
 
       </div>
+
+      {/* REQUEST PRODUCT RETURN MODAL */}
+      {returnModalItem && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">Request Product Return</h3>
+            <p className="text-xs text-slate-500 font-medium -mt-2">
+              {returnModalItem.productName}
+            </p>
+
+            <form onSubmit={handleConfirmReturn} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={returnModalItem.quantity}
+                  value={returnQuantity}
+                  onChange={(e) => setReturnQuantity(Number(e.target.value))}
+                  className="w-full text-sm border border-stone-300 rounded-xl px-3 py-2 outline-none focus:border-slate-800 transition"
+                  required
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Maximum quantity: {returnModalItem.quantity}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Return Reason
+                </label>
+                <textarea
+                  rows="3"
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="e.g., broken, defective, wrong size..."
+                  className="w-full text-sm border border-stone-300 rounded-xl p-3 outline-none focus:border-slate-800 transition resize-none"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReturnModalItem(null)}
+                  disabled={isSubmittingReturn}
+                  className="px-4 py-2 border border-stone-200 text-stone-600 rounded-xl text-xs font-semibold hover:bg-stone-50 transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReturn}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingReturn ? "Submitting..." : "Submit Return"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

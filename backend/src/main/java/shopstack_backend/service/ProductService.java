@@ -539,6 +539,12 @@ public class ProductService {
                         : (product.getStockQuantity() != null ? product.getStockQuantity() : 0);
 
         dto.setStock(stock);
+
+        // Vendor's own undistributed pool — separate from `stock` above.
+        // Needed by the vendor's own inventory pages and by admin's
+        // "distribute to warehouse" screen, neither of which should see
+        // the warehouse-purchasable number here.
+        dto.setVendorPoolQuantity(product.getStockQuantity() != null ? product.getStockQuantity() : 0);
         if (product.getImageUrl() != null
                 && !product.getImageUrl()
                 .trim()

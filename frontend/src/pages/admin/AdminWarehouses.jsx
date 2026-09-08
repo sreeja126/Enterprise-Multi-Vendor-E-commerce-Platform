@@ -389,7 +389,7 @@ const AdminWarehouses = () => {
                       <option value="">Select a product...</option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} — {p.stock ?? 0} in vendor pool
+                          {p.name} — {p.vendorPoolQuantity ?? 0} in vendor pool
                         </option>
                       ))}
                     </select>

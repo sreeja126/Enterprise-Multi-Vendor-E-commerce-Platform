@@ -52,7 +52,7 @@ function EditProduct() {
             brand: productData.brand || "",
             description: productData.description || "",
             price: productData.price ?? "",
-            stock: productData.stockQuantity ?? productData.stock ?? "",
+            stock: productData.vendorPoolQuantity ?? productData.stockQuantity ?? productData.stock ?? "",
             categoryId:
               productData.categoryId ||
               productData.category?.id ||

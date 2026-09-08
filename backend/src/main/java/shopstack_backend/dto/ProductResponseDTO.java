@@ -21,6 +21,15 @@ public class ProductResponseDTO {
 
     private int stock;
 
+    // The vendor's own undistributed pool (Product.stockQuantity) — distinct
+    // from `stock` above, which is real purchasable stock across
+    // warehouses. Vendors managing their own inventory, and admin
+    // distributing stock to a warehouse, both need THIS number; customers
+    // browsing the storefront need `stock` instead. Conflating the two
+    // was the exact bug that made admin's "distribute stock" screen show
+    // a misleading number.
+    private int vendorPoolQuantity;
+
     private boolean isOutOfStock;
 
     private List<String> images;
@@ -113,6 +122,14 @@ public class ProductResponseDTO {
     public void setStockQuantity(int stockQuantity) {
         this.stock = stockQuantity;
         this.isOutOfStock = (stockQuantity <= 0);
+    }
+
+    public int getVendorPoolQuantity() {
+        return vendorPoolQuantity;
+    }
+
+    public void setVendorPoolQuantity(int vendorPoolQuantity) {
+        this.vendorPoolQuantity = vendorPoolQuantity;
     }
 
     public boolean isOutOfStock() {

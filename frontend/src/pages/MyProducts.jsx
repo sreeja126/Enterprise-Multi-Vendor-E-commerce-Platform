@@ -25,7 +25,7 @@ const MyProducts = () => {
       const initialStock = {};
       const initialDiscount = {};
       data.forEach((p) => {
-        initialStock[p.id] = p.stockQuantity ?? p.stock ?? 0;
+        initialStock[p.id] = p.vendorPoolQuantity ?? p.stockQuantity ?? p.stock ?? 0;
         initialDiscount[p.id] = p.discountPercentage ?? 0;
       });
       setStockInputs(initialStock);
@@ -150,7 +150,7 @@ const MyProducts = () => {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {products.map((p) => {
-                  const currentStock = p.stockQuantity ?? p.stock ?? 0;
+                  const currentStock = p.vendorPoolQuantity ?? p.stockQuantity ?? p.stock ?? 0;
                   const price = p.price ?? 0;
                   const discount = p.discountPercentage ?? 0;
                   const finalPrice = p.finalPrice ?? price;
