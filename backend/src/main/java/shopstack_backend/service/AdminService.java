@@ -2,6 +2,7 @@ package shopstack_backend.service;
 
 import shopstack_backend.dto.*;
 import shopstack_backend.entity.Order;
+import shopstack_backend.entity.Role;
 import shopstack_backend.entity.Vendor;
 import shopstack_backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,22 +90,37 @@ public class AdminService {
     // (see ProductService.addProduct's gate) until admin approves them.
     // ---------------------------------------------------------------
 
-    public AdminVendorDTO approveVendor(Long vendorId) {
-        Vendor vendor = vendorRepository.findById(vendorId)
-                .orElseThrow(() -> new IllegalArgumentException("Vendor not found."));
-        vendor.setStatus("APPROVED");
-        vendorRepository.save(vendor);
-        return toVendorDTO(vendor);
+  public AdminVendorDTO approveVendor(Long vendorId) {
+    Vendor vendor = vendorRepository.findById(vendorId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException("Vendor not found."));
+
+    vendor.setStatus("APPROVED");
+
+    if (vendor.getUser() != null) {
+        vendor.getUser().setRole(Role.VENDOR);
     }
 
-    public AdminVendorDTO rejectVendor(Long vendorId) {
-        Vendor vendor = vendorRepository.findById(vendorId)
-                .orElseThrow(() -> new IllegalArgumentException("Vendor not found."));
-        vendor.setStatus("REJECTED");
-        vendorRepository.save(vendor);
-        return toVendorDTO(vendor);
+    vendorRepository.save(vendor);
+
+    return toVendorDTO(vendor);
+}
+
+   public AdminVendorDTO rejectVendor(Long vendorId) {
+    Vendor vendor = vendorRepository.findById(vendorId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException("Vendor not found."));
+
+    vendor.setStatus("REJECTED");
+
+    if (vendor.getUser() != null) {
+        vendor.getUser().setRole(Role.CUSTOMER);
     }
 
+    vendorRepository.save(vendor);
+
+    return toVendorDTO(vendor);
+}
     private AdminVendorDTO toVendorDTO(Vendor v) {
         long productCount = v.getProducts() == null ? 0 : v.getProducts().size();
         return new AdminVendorDTO(

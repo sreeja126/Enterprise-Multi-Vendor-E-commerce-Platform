@@ -174,7 +174,10 @@ public class CouponService {
         }
 
         // Eligible coupons first (best discount first within each group)
-        result.sort(Comparator.comparing(AvailableCouponDTO::isEligible).reversed());
+        result.sort(Comparator
+                .comparing(AvailableCouponDTO::isEligible).reversed()
+                .thenComparing(AvailableCouponDTO::getEstimatedDiscount,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
         return result;
     }
     @Transactional
@@ -197,10 +200,21 @@ public class CouponService {
 
     @Transactional
     public void deleteCoupon(Long id) {
-        if (!couponRepository.existsById(id)) {
-            throw new IllegalArgumentException("Coupon not found.");
+        Coupon coupon = couponRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Coupon not found."));
+
+        // CouponUsage keeps the historical redemption record and references
+        // this coupon with a non-null foreign key. A used coupon therefore
+        // must not be hard-deleted, otherwise the database rejects the delete
+        // and the admin loses the audit trail.
+        long usageCount = couponUsageRepository.countByCoupon_Id(id);
+        if (usageCount > 0) {
+            throw new IllegalArgumentException(
+                    "This coupon has " + usageCount
+                            + " usage record(s) and cannot be deleted. Deactivate it instead to preserve order history.");
         }
-        couponRepository.deleteById(id);
+
+        couponRepository.delete(coupon);
     }
 
     @Transactional
@@ -219,6 +233,9 @@ public class CouponService {
     }
 
     private void validateRequest(CouponRequestDTO request, Long selfId) {
+        if (request == null) {
+            throw new IllegalArgumentException("Coupon details are required.");
+        }
         if (request.getCode() == null || request.getCode().isBlank()) {
             throw new IllegalArgumentException("Coupon code is required.");
         }
@@ -247,8 +264,11 @@ public class CouponService {
         if (request.getMinOrderAmount() != null && request.getMinOrderAmount().compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("Minimum order amount can't be negative.");
         }
-        if (request.getMaxDiscount() != null && request.getMaxDiscount().compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Maximum discount can't be negative.");
+        if (type == DiscountType.FLAT && request.getMaxDiscount() != null) {
+            throw new IllegalArgumentException("Maximum discount can only be set for percentage coupons.");
+        }
+        if (request.getMaxDiscount() != null && request.getMaxDiscount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Maximum discount must be greater than zero.");
         }
         if (request.getStartDate() == null || request.getExpiryDate() == null) {
             throw new IllegalArgumentException("Both a start date and an expiry date are required.");
@@ -258,6 +278,14 @@ public class CouponService {
         }
         if (request.getUsageLimit() != null && request.getUsageLimit() < 1) {
             throw new IllegalArgumentException("Usage limit must be at least 1 (leave it blank for unlimited).");
+        }
+        if (selfId != null && request.getUsageLimit() != null) {
+            Coupon existing = couponRepository.findById(selfId).orElse(null);
+            if (existing != null && request.getUsageLimit() < existing.getUsageCount()) {
+                throw new IllegalArgumentException(
+                        "Usage limit cannot be lower than the coupon's current usage count ("
+                                + existing.getUsageCount() + ").");
+            }
         }
         if (request.getPerCustomerLimit() != null && request.getPerCustomerLimit() < 1) {
             throw new IllegalArgumentException("Per-customer limit must be at least 1 (leave it blank for no cap).");

@@ -31,16 +31,34 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                         new UsernameNotFoundException("User not found"));
 
         // Multi-role support: an account's primary role (User.role) is
-        // always granted, but an account can ALSO hold a Vendor profile
-        // independent of that primary role — e.g. a CUSTOMER who chose to
-        // "Become a Vendor" later. If so, grant VENDOR authority too, so
-        // the same login can pass both hasRole("VENDOR") on /api/vendor/**
-        // and the normal customer-facing endpoints, without a second account.
+        // always granted, EXCEPT when that role is VENDOR and the vendor
+        // profile isn't APPROVED yet — a PENDING/REJECTED vendor should be
+        // able to log in (e.g. to see their application status) but must
+        // not pass hasRole("VENDOR") on any /api/vendor/** endpoint until
+        // an admin actually approves them.
+        //
+        // Separately, an account whose primary role ISN'T vendor can still
+        // gain VENDOR authority by having an APPROVED vendor profile of
+        // their own (a CUSTOMER who used "Become a Vendor" and was
+        // approved) — checking existence alone here would grant vendor
+        // access the instant the request is submitted, before any
+        // approval happens at all.
         Set<String> roleNames = new LinkedHashSet<>();
-        roleNames.add(user.getRole().name());
 
-        if (user.getRole() != Role.VENDOR && vendorRepository.existsByUser(user)) {
-            roleNames.add(Role.VENDOR.name());
+        boolean hasApprovedVendorProfile = vendorRepository.findByUser(user)
+                .map(v -> "APPROVED".equalsIgnoreCase(v.getStatus()))
+                .orElse(false);
+
+        if (user.getRole() == Role.VENDOR) {
+            if (hasApprovedVendorProfile) {
+                roleNames.add(Role.VENDOR.name());
+            }
+            // else: PENDING/REJECTED — no VENDOR authority yet.
+        } else {
+            roleNames.add(user.getRole().name());
+            if (hasApprovedVendorProfile) {
+                roleNames.add(Role.VENDOR.name());
+            }
         }
 
         return org.springframework.security.core.userdetails.User

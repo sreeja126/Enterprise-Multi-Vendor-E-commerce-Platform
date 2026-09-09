@@ -88,7 +88,7 @@ const WarehouseStaffStock = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <SummaryCard label="Available" value={totals.available} accent="emerald" />
           <SummaryCard label="Allocated" value={totals.allocated} accent="amber" />
           <SummaryCard label="Damaged / Quarantined" value={totals.damaged} accent="rose" />
@@ -214,7 +214,7 @@ const LoadingSkeleton = () => (
         <div className="h-7 w-64 bg-stone-200 rounded-md"></div>
         <div className="h-4 w-80 bg-stone-200 rounded-md"></div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[...Array(3)].map((_, i) => (
           <div key={i} className="h-20 bg-stone-200 rounded-2xl"></div>
         ))}

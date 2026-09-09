@@ -18,6 +18,7 @@ const emptyForm = {
   startDate: '',
   expiryDate: '',
   usageLimit: '',
+  perCustomerLimit: '',
   active: true,
 };
 
@@ -131,6 +132,7 @@ const AdminCoupons = () => {
       startDate: coupon.startDate || '',
       expiryDate: coupon.expiryDate || '',
       usageLimit: coupon.usageLimit ?? '',
+      perCustomerLimit: coupon.perCustomerLimit ?? '',
       active: coupon.active,
     });
     setFormError('');
@@ -162,6 +164,7 @@ const AdminCoupons = () => {
         startDate: form.startDate,
         expiryDate: form.expiryDate,
         usageLimit: form.usageLimit === '' ? null : Number(form.usageLimit),
+        perCustomerLimit: form.perCustomerLimit === '' ? null : Number(form.perCustomerLimit),
         active: form.active,
       };
       if (editingId) {
@@ -193,6 +196,15 @@ const AdminCoupons = () => {
   };
 
   const handleDelete = async (coupon) => {
+    const hasUsage = Number(coupon.usageCount || 0) > 0;
+
+    if (hasUsage) {
+      window.alert(
+        `Coupon "${coupon.code}" has already been used.\n\nUsed coupons cannot be deleted because their usage history must be preserved. Please deactivate the coupon instead.`
+      );
+      return;
+    }
+
     if (!window.confirm(`Delete coupon "${coupon.code}"? This cannot be undone.`)) return;
     try {
       setBusyId(coupon.id);
@@ -200,7 +212,12 @@ const AdminCoupons = () => {
       await loadAll();
     } catch (err) {
       console.error('Failed to delete coupon:', err);
-      setError('Unable to delete this coupon. Please try again.');
+      const backendMessage = err.response?.data;
+      setError(
+        typeof backendMessage === 'string'
+          ? backendMessage
+          : 'Unable to delete this coupon. Please try again.'
+      );
     } finally {
       setBusyId(null);
     }
@@ -363,6 +380,20 @@ const AdminCoupons = () => {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Per Customer Limit</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.perCustomerLimit}
+                  onChange={(e) => handleFormChange('perCustomerLimit', e.target.value)}
+                  placeholder="Leave blank for unlimited"
+                  className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">Maximum times one customer can redeem this coupon.</p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Start Date *</label>
                 <input
                   type="date"
@@ -431,6 +462,7 @@ const AdminCoupons = () => {
                   <th scope="col" className="px-6 py-4">Min Order</th>
                   <th scope="col" className="px-6 py-4">Valid Period</th>
                   <th scope="col" className="px-6 py-4">Usage</th>
+                  <th scope="col" className="px-6 py-4">Per Customer</th>
                   <th scope="col" className="px-6 py-4">Discount Given</th>
                   <th scope="col" className="px-6 py-4">Status</th>
                   <th scope="col" className="px-6 py-4"></th>
@@ -456,6 +488,9 @@ const AdminCoupons = () => {
                         </td>
                         <td className="px-6 py-4 text-slate-600">
                           {coupon.usageCount}{coupon.usageLimit ? ` / ${coupon.usageLimit}` : ''}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {coupon.perCustomerLimit || '\u2014'}
                         </td>
                         <td className="px-6 py-4 font-semibold text-emerald-700">
                           {formatCurrency(stats ? stats.totalDiscountGiven : 0)}
@@ -501,7 +536,7 @@ const AdminCoupons = () => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan="8" className="px-6 py-10 text-center text-slate-500">
+                    <td colSpan="9" className="px-6 py-10 text-center text-slate-500">
                       No coupons created yet. Click "Create Coupon" to add your first one.
                     </td>
                   </tr>

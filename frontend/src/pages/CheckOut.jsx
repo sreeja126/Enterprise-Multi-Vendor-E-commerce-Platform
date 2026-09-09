@@ -10,7 +10,7 @@ import {
   verifyBuyNowPayment,
   placeCodBuyNowOrder,
 } from "../services/paymentService";
-import { getAddresses, addAddress } from "../services/addressService";
+import { getAddresses, addAddress } from "../services/AddressService";
 import { applyCoupon, getAvailableCoupons } from "../services/couponService";
 
 const emptyForm = {

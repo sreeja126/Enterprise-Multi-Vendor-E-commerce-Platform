@@ -1,7 +1,13 @@
 import axios from "axios";
 
+// VITE_API_BASE_URL is baked in at BUILD time by Vite (see the Dockerfile's
+// ARG/ENV VITE_API_BASE_URL) — it must point at the backend's own origin
+// (no trailing /api), since /api is appended here. Falls back to the local
+// dev backend when running outside Docker (npm run dev).
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8080"}/api`;
+
 const API = axios.create({
-  baseURL: "http://localhost:8080/api",
+  baseURL: API_BASE_URL,
 });
 
 API.interceptors.request.use((config) => {
@@ -39,6 +45,7 @@ API.interceptors.response.use(
       localStorage.removeItem("role");
       localStorage.removeItem("isVendor");
       localStorage.removeItem("viewAs");
+      localStorage.removeItem("vendorStatus");
       window.dispatchEvent(new Event("storage"));
 
       // Only force a redirect if there actually was a session that just

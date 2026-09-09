@@ -14,6 +14,8 @@ public interface CouponUsageRepository extends JpaRepository<CouponUsage, Long> 
 
     List<CouponUsage> findByCoupon_IdOrderByUsedAtDesc(Long couponId);
 
+    long countByCoupon_Id(Long couponId);
+
     // How many times THIS customer specifically has used this coupon —
     // enforces a per-customer cap independent of (and in addition to) the
     // coupon's global usageLimit.

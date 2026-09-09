@@ -30,17 +30,10 @@ function AdminOrders() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      // The real admin endpoint - every order across every customer and
-      // vendor, with full item detail. (Not /orders - that's the logged-in
-      // user's own order history. Not /orders/vendor/items - that's scoped
-      // to a vendor account and would reject an admin's token.)
       const data = await getAdminOrders();
       const list = Array.isArray(data) ? data : [];
       setOrders(list);
 
-      // Pull warehouse allocations for every order in parallel, so we know
-      // which items are actually allocated (and where) rather than guessing
-      // from fields that don't exist on the order payload.
       const entries = await Promise.all(
         list.map(async (order) => {
           try {
@@ -84,8 +77,6 @@ function AdminOrders() {
     }
   };
 
-  // Flatten orders -> one row per item, since allocation happens at the
-  // item level (a single order can be split across warehouses).
   const rows = orders.flatMap((order) =>
     (order.items || []).map((item) => {
       const allocations = allocationsByOrder[order.id] || [];
@@ -205,16 +196,38 @@ const OrderItemRow = ({ row, onAllocated, onMarkDelivered, delivering }) => {
   const isTerminal = ['CANCELLED', 'RETURNED', 'REFUNDED'].includes(row.status);
   const needsAllocation = row.remaining > 0 && !isTerminal;
 
+  // Flexible extraction of product ID
+  const targetProductId = row.productId || row.product?.id || row.id;
+
   const openAllocateForm = async () => {
     setShowAllocateForm(true);
     setQuantity(row.remaining);
     setError('');
+    
     if (stockOptions !== null) return;
+    
     setLoadingStock(true);
     try {
-      const data = await getStockForProduct(row.productId);
-      setStockOptions(Array.isArray(data) ? data : []);
+      if (!targetProductId) {
+        console.error("No valid product ID found for row:", row);
+        setStockOptions([]);
+        return;
+      }
+
+      const data = await getStockForProduct(targetProductId);
+      
+      let list = [];
+      if (Array.isArray(data)) {
+        list = data;
+      } else if (data && Array.isArray(data.content)) {
+        list = data.content;
+      } else if (data && Array.isArray(data.data)) {
+        list = data.data;
+      }
+
+      setStockOptions(list);
     } catch (err) {
+      console.error("Failed to fetch stock options:", err);
       setStockOptions([]);
     } finally {
       setLoadingStock(false);
@@ -327,13 +340,23 @@ const OrderItemRow = ({ row, onAllocated, onMarkDelivered, delivering }) => {
               className="w-full border border-stone-300 rounded-lg px-2 py-1.5 text-2xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
             >
               <option value="">
-                {loadingStock ? 'Loading warehouses...' : 'Choose warehouse...'}
+                {loadingStock 
+                  ? 'Loading warehouses...' 
+                  : stockOptions && stockOptions.length === 0 
+                    ? 'No warehouses found' 
+                    : 'Choose warehouse...'}
               </option>
-              {(stockOptions || []).map((s) => (
-                <option key={s.warehouseId} value={s.warehouseId} disabled={s.availableQuantity <= 0}>
-                  {s.warehouseName} ({s.availableQuantity} available)
-                </option>
-              ))}
+              {(stockOptions || []).map((s, idx) => {
+                const wId = s.warehouseId || s.warehouse?.id || s.id;
+                const wName = s.warehouseName || s.warehouse?.name || `Warehouse #${wId}`;
+                const avail = s.availableQuantity ?? s.quantity ?? 0;
+
+                return (
+                  <option key={wId || idx} value={wId} disabled={avail <= 0}>
+                    {wName} ({avail} available)
+                  </option>
+                );
+              })}
             </select>
             <input
               type="number"

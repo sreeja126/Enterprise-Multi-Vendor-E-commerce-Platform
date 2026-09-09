@@ -32,7 +32,8 @@ public class AccountService {
 
     // Lets an existing account (typically a CUSTOMER) gain a Vendor
     // profile WITHOUT creating a second account — the same login then
-    // works for both customer browsing and vendor product management.
+    // works for both customer browsing and vendor product management,
+    // once admin approves the application.
     @Transactional
     public AccountInfoResponseDTO becomeVendor(String email, BecomeVendorRequestDTO request) {
         User user = userRepository.findByEmail(email)
@@ -41,21 +42,40 @@ public class AccountService {
         if (user.getRole() == Role.VENDOR) {
             throw new IllegalStateException("This account is already registered as a vendor.");
         }
-        if (vendorRepository.existsByUser(user)) {
-            throw new IllegalStateException("This account already has a vendor profile.");
-        }
 
-        Vendor vendor = new Vendor();
         String businessName = (request != null && request.getBusinessName() != null && !request.getBusinessName().isBlank())
                 ? request.getBusinessName().trim()
                 : user.getFullName();
+
+        Optional<Vendor> existing = vendorRepository.findByUser(user);
+        if (existing.isPresent()) {
+            String status = existing.get().getStatus();
+            if ("APPROVED".equalsIgnoreCase(status)) {
+                throw new IllegalStateException("This account already has a vendor profile.");
+            }
+            if ("PENDING".equalsIgnoreCase(status)) {
+                throw new IllegalStateException("Your vendor application is still awaiting admin approval.");
+            }
+            // REJECTED — allow a fresh attempt instead of a permanent
+            // lockout after a single rejection (same principle as return
+            // requests: a rejection shouldn't bar every future attempt).
+            Vendor vendor = existing.get();
+            vendor.setName(businessName);
+            vendor.setPhone(request != null ? request.getPhone() : null);
+            vendor.setDescription(request != null ? request.getDescription() : null);
+            vendor.setStatus("PENDING");
+            vendorRepository.save(vendor);
+            return toDTO(user);
+        }
+
+        Vendor vendor = new Vendor();
         vendor.setName(businessName);
         vendor.setEmail(user.getEmail());
         vendor.setPhone(request != null ? request.getPhone() : null);
         vendor.setDescription(request != null ? request.getDescription() : null);
-        // Requires admin approval before this vendor can list products —
-        // see AdminController's /vendors/{id}/approve|reject. Matches the
-        // same policy as a direct vendor registration above.
+        // Requires admin approval before this vendor can list products or
+        // access any /api/vendor/** endpoint — see UserDetailsServiceImpl
+        // (authority granting) and AdminController's /vendors/{id}/approve|reject.
         vendor.setStatus("PENDING");
         vendor.setUser(user);
         vendorRepository.save(vendor);
@@ -70,7 +90,12 @@ public class AccountService {
         dto.setPrimaryRole(user.getRole().name());
 
         Optional<Vendor> vendor = vendorRepository.findByUser(user);
-        dto.setVendor(user.getRole() == Role.VENDOR || vendor.isPresent());
+        // isVendor means "actually has vendor ACCESS right now" — an
+        // unapproved (PENDING/REJECTED) profile must not flip this true,
+        // or the frontend would grant vendor UI/routes before an admin
+        // ever approved anything.
+        boolean isApprovedVendor = vendor.map(v -> "APPROVED".equalsIgnoreCase(v.getStatus())).orElse(false);
+        dto.setVendor(isApprovedVendor);
         vendor.ifPresent(v -> {
             dto.setVendorId(v.getId());
             dto.setVendorStatus(v.getStatus());

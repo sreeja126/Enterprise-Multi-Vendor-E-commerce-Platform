@@ -43,7 +43,12 @@ function ProductList() {
     []
   );
 
-  const isVendor = String(currentUserRole).toUpperCase() === "VENDOR";
+  // The JWT role identifies the account's real role, while viewAs identifies
+  // which side of a multi-role account is currently active.
+  const activeView = String(
+    localStorage.getItem("viewAs") || currentUserRole || "CUSTOMER"
+  ).toUpperCase();
+  const isVendor = activeView === "VENDOR";
 
   // 2. Component State
   const [products, setProducts] = useState([]);
