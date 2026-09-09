@@ -8,7 +8,6 @@ public class AdminDashboardSummaryDTO {
     private long totalVendors;
     private long totalProducts;
     private long lowStockProductsCount;
-    private long pendingOrders;
     private long completedOrders;
     private long cancelledOrders;
     private BigDecimal totalCommission;

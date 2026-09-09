@@ -11,7 +11,7 @@ export const approveVendor = async (vendorId) => {
   const response = await api.patch(`/admin/vendors/${vendorId}/approve`);
   return response.data;
 };
-export const rejectVendor = async (vendorId) => {
+export const rejectVendor = async   (vendorId) => {
   const response = await api.patch(`/admin/vendors/${vendorId}/reject`);
   return response.data;
 };
