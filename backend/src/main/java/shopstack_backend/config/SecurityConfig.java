@@ -45,7 +45,12 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         // Permitted origins for Vite dev server and containerized frontend
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:3000", "http://localhost"));
+      configuration.setAllowedOriginPatterns(List.of(
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost",
+    "https://*.vercel.app"
+));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
