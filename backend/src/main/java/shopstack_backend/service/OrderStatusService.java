@@ -34,10 +34,18 @@ public class OrderStatusService {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private EmailService emailService;
+
     @Transactional
     public void recomputeOrderStatus(Order order) {
         List<OrderItem> items = order.getItems();
         if (items == null || items.isEmpty()) return;
+        // Captured before any setStatus() call below so we can tell whether
+        // this recompute actually crossed into SHIPPED/DELIVERED for the
+        // first time — recompute can be called repeatedly (e.g. once per
+        // item update), and we only want one email per real transition.
+        OrderStatus previousStatus = order.getStatus();
         OrderStatus least = null;
         for (OrderItem item : items) {
             OrderStatus s = item.getStatus();
@@ -56,6 +64,7 @@ public class OrderStatusService {
             // PENDING -> DELIVERED progression — the order tracks that.
             order.setStatus(least);
             orderRepository.save(order);
+            notifyOnTransition(order, previousStatus, least);
             return;
         }
 
@@ -78,5 +87,20 @@ public class OrderStatusService {
             }
         }
         orderRepository.save(order);
+    }
+
+    // Sends the Order Shipped / Order Delivered emails, but only on the
+    // actual PENDING/CONFIRMED/... -> SHIPPED/DELIVERED transition — not on
+    // every recompute (this method can be called several times per item as
+    // it moves through the pipeline, and would otherwise re-send).
+    private void notifyOnTransition(Order order, OrderStatus previousStatus, OrderStatus newStatus) {
+        if (previousStatus == newStatus) {
+            return;
+        }
+        if (newStatus == OrderStatus.SHIPPED) {
+            emailService.sendOrderShippedEmail(order);
+        } else if (newStatus == OrderStatus.DELIVERED) {
+            emailService.sendOrderDeliveredEmail(order);
+        }
     }
 }

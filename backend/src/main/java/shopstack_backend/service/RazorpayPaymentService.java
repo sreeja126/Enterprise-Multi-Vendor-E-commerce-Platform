@@ -44,6 +44,9 @@ public class RazorpayPaymentService {
     @Autowired(required = false)
     private WarehouseService warehouseService;
 
+    @Autowired
+    private EmailService emailService;
+
     @Value("${razorpay.key.id}")
     private String keyId;
 
@@ -187,11 +190,16 @@ public class RazorpayPaymentService {
             );
         }
 
-        verifySignature(
-                request.getRazorpayOrderId(),
-                request.getRazorpayPaymentId(),
-                request.getRazorpaySignature()
-        );
+        try {
+            verifySignature(
+                    request.getRazorpayOrderId(),
+                    request.getRazorpayPaymentId(),
+                    request.getRazorpaySignature()
+            );
+        } catch (SecurityException signatureError) {
+            emailService.sendPaymentFailedEmail(email, signatureError.getMessage());
+            throw signatureError;
+        }
 
         // Idempotency guard: this exact payment must never be used to
         // create more than one order — a double-click, retried request, or
@@ -218,6 +226,9 @@ public class RazorpayPaymentService {
             // rather than leaving their money in limbo with no order to
             // show for it.
             refundFailedPayment(request.getRazorpayPaymentId());
+            emailService.sendPaymentFailedEmail(email,
+                    "Payment was captured but the order could not be completed (" +
+                    orderCreationError.getMessage() + "). A full refund has been issued.");
             throw new IllegalStateException(
                     "Your payment was successful, but we couldn't complete this order (" +
                     orderCreationError.getMessage() + "). You have been refunded in full — " +
@@ -245,11 +256,16 @@ public class RazorpayPaymentService {
             );
         }
 
-        verifySignature(
-                request.getRazorpayOrderId(),
-                request.getRazorpayPaymentId(),
-                request.getRazorpaySignature()
-        );
+        try {
+            verifySignature(
+                    request.getRazorpayOrderId(),
+                    request.getRazorpayPaymentId(),
+                    request.getRazorpaySignature()
+            );
+        } catch (SecurityException signatureError) {
+            emailService.sendPaymentFailedEmail(email, signatureError.getMessage());
+            throw signatureError;
+        }
 
         if (paymentRepository.existsByTransactionId(request.getRazorpayPaymentId())) {
             throw new IllegalStateException(
@@ -269,6 +285,9 @@ public class RazorpayPaymentService {
             );
         } catch (Exception orderCreationError) {
             refundFailedPayment(request.getRazorpayPaymentId());
+            emailService.sendPaymentFailedEmail(email,
+                    "Payment was captured but the order could not be completed (" +
+                    orderCreationError.getMessage() + "). A full refund has been issued.");
             throw new IllegalStateException(
                     "Your payment was successful, but we couldn't complete this order (" +
                     orderCreationError.getMessage() + "). You have been refunded in full — " +

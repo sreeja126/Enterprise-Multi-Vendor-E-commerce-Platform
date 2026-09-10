@@ -25,6 +25,9 @@ public class RefundService {
     @Autowired
     private RazorpayClient razorpayClient;
 
+    @Autowired
+    private EmailService emailService;
+
 
     public Refund processRefund(OrderItem item) {
 
@@ -66,7 +69,11 @@ public class RefundService {
             );
         }
 
-        return refundRepository.save(refund);
+        Refund saved = refundRepository.save(refund);
+        if (saved.getStatus() == RefundStatus.PROCESSED) {
+            emailService.sendRefundCompletedEmail(saved);
+        }
+        return saved;
     }
 
     // ---------------------------------------------------------------
@@ -95,7 +102,9 @@ public class RefundService {
             refund.setStatus(RefundStatus.PROCESSED);
             refund.setProcessedAt(LocalDateTime.now());
             refund.setFailureReason(null);
-            return refundRepository.save(refund);
+            Refund saved = refundRepository.save(refund);
+            emailService.sendRefundCompletedEmail(saved);
+            return saved;
         }
 
         Payment payment = paymentRepository
@@ -103,7 +112,11 @@ public class RefundService {
                 .orElseThrow(() -> new IllegalStateException("No payment record found for this order."));
 
         attemptRazorpayRefund(refund, payment.getTransactionId(), refund.getAmount());
-        return refundRepository.save(refund);
+        Refund saved = refundRepository.save(refund);
+        if (saved.getStatus() == RefundStatus.PROCESSED) {
+            emailService.sendRefundCompletedEmail(saved);
+        }
+        return saved;
     }
 
     private void attemptRazorpayRefund(Refund refund, String razorpayPaymentId, BigDecimal refundAmount) {

@@ -55,6 +55,8 @@ public class OrderService {
     private WarehouseService warehouseService;
     @Autowired
     private OrderStatusService orderStatusService;
+    @Autowired
+    private EmailService emailService;
     private static final List<OrderStatus> PROGRESSION = Arrays.asList(
             OrderStatus.PENDING,
             OrderStatus.CONFIRMED,
@@ -143,6 +145,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        sendOrderCreationNotifications(saved, payment);
         // No automatic warehouse allocation here — admin allocates each
         // item to a warehouse manually from the Admin Orders screen.
         if (couponEval != null) {
@@ -245,6 +248,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        sendOrderCreationNotifications(saved, payment);
         // No automatic warehouse allocation — admin allocates manually.
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
@@ -318,6 +322,7 @@ BigDecimal lineTotal = finalPrice
         saved.setStatus(OrderStatus.CONFIRMED);
         orderRepository.save(saved);
         commissionService.syncCommissionsForOrder(saved);
+        sendOrderCreationNotifications(saved, payment);
         // No automatic warehouse allocation — admin allocates manually.
         if (couponEval != null) {
             couponService.recordUsage(couponEval.getCoupon(), user, saved, discountAmount);
@@ -334,6 +339,18 @@ BigDecimal lineTotal = finalPrice
         return checkoutSingleItem(email, addressId, productId, quantity,
                 "COD", "COD-" + UUID.randomUUID(), PaymentStatus.PENDING, couponCode);
     }
+    // Fires the two customer notifications tied to order creation. Called
+    // right after an order + its payment record are both persisted, from
+    // every checkout entry point (cart checkout, COD, buy-now). Payment
+    // Successful only fires when the payment actually succeeded — a COD
+    // order's payment starts PENDING and is intentionally silent here.
+    private void sendOrderCreationNotifications(Order order, Payment payment) {
+        emailService.sendOrderPlacedEmail(order);
+        if (payment != null && payment.getStatus() == PaymentStatus.SUCCESS) {
+            emailService.sendPaymentSuccessEmail(order, payment);
+        }
+    }
+
     private Payment recordPayment(Order order, String method, String transactionId) {
         return recordPayment(order, method, transactionId, PaymentStatus.SUCCESS);
     }
